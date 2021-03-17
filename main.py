@@ -15,6 +15,7 @@ from planner import MPCPlanner
 from utils import lineplot, write_video, imagine_ahead, lambda_return, FreezeParameters, ActivateParameters
 from tensorboardX import SummaryWriter
 
+os.environ['MUJOCO_GL'] = 'egl'
 
 # Hyperparameters
 parser = argparse.ArgumentParser(description='PlaNet or Dreamer')
@@ -93,8 +94,10 @@ summary_name = results_dir + "/{}_{}_log"
 writer = SummaryWriter(summary_name.format(args.env, args.id))
 
 # Initialise training environment and experience replay memory
+print('Initializing environment...')
 env = Env(args.env, args.symbolic_env, args.seed, args.max_episode_length, args.action_repeat, args.bit_depth)
-if args.experience_replay is not '' and os.path.exists(args.experience_replay):
+print('Initializing replay memory...')
+if args.experience_replay != '' and os.path.exists(args.experience_replay):
   D = torch.load(args.experience_replay)
   metrics['steps'], metrics['episodes'] = [D.steps] * D.episodes, list(range(1, D.episodes + 1))
 elif not args.test:
@@ -113,6 +116,7 @@ elif not args.test:
 
 
 # Initialise model parameters randomly
+print('Initializing model...')
 transition_model = TransitionModel(args.belief_size, args.state_size, env.action_size, args.hidden_size, args.embedding_size, args.dense_activation_function).to(device=args.device)
 observation_model = ObservationModel(args.symbolic_env, env.observation_size, args.belief_size, args.state_size, args.embedding_size, args.cnn_activation_function).to(device=args.device)
 reward_model = RewardModel(args.belief_size, args.state_size, args.hidden_size, args.dense_activation_function).to(device=args.device)
@@ -125,7 +129,7 @@ params_list = param_list + value_actor_param_list
 model_optimizer = optim.Adam(param_list, lr=0 if args.learning_rate_schedule != 0 else args.model_learning_rate, eps=args.adam_epsilon)
 actor_optimizer = optim.Adam(actor_model.parameters(), lr=0 if args.learning_rate_schedule != 0 else args.actor_learning_rate, eps=args.adam_epsilon)
 value_optimizer = optim.Adam(value_model.parameters(), lr=0 if args.learning_rate_schedule != 0 else args.value_learning_rate, eps=args.adam_epsilon)
-if args.models is not '' and os.path.exists(args.models):
+if args.models != '' and os.path.exists(args.models):
   model_dicts = torch.load(args.models)
   transition_model.load_state_dict(model_dicts['transition_model'])
   observation_model.load_state_dict(model_dicts['observation_model'])
