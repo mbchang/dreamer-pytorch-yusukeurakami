@@ -15,7 +15,7 @@ from planner import MPCPlanner
 from utils import lineplot, write_video, imagine_ahead, lambda_return, FreezeParameters, ActivateParameters
 from tensorboardX import SummaryWriter
 
-os.environ['MUJOCO_GL'] = 'egl'
+
 
 
 # Hyperparameters
@@ -85,6 +85,7 @@ if torch.cuda.is_available() and not args.disable_cuda:
 	print("using CUDA")
 	args.device = torch.device('cuda')
 	torch.cuda.manual_seed(args.seed)
+	os.environ['MUJOCO_GL'] = 'egl'
 else:
 	print("using CPU")
 	args.device = torch.device('cpu')
@@ -95,14 +96,16 @@ summary_name = results_dir + "/{}_{}_log"
 writer = SummaryWriter(summary_name.format(args.env, args.id))
 
 # Initialise training environment and experience replay memory
+print('Initializing environment...')
 env = Env(args.env, args.symbolic_env, args.seed, args.max_episode_length, args.action_repeat, args.bit_depth)
+print('Initializing memory...')
 if args.experience_replay != '' and os.path.exists(args.experience_replay):
 	D = torch.load(args.experience_replay)
 	metrics['steps'], metrics['episodes'] = [D.steps] * D.episodes, list(range(1, D.episodes + 1))
 elif not args.test:
 	D = ExperienceReplay(args.experience_size, args.symbolic_env, env.observation_size, env.action_size, args.bit_depth, args.device)
 	# Initialise dataset D with S random seed episodes
-	for s in range(1, args.seed_episodes + 1):
+	for s in tqdm(range(1, args.seed_episodes + 1)):
 		observation, done, t = env.reset(), False, 0
 		while not done:
 			action = env.sample_random_action()
@@ -115,6 +118,7 @@ elif not args.test:
 
 
 # Initialise model parameters randomly
+print('Initializing model...')
 transition_model = TransitionModel(args.belief_size, args.state_size, env.action_size, args.hidden_size, args.embedding_size, args.dense_activation_function).to(device=args.device)
 observation_model = ObservationModel(args.symbolic_env, env.observation_size, args.belief_size, args.state_size, args.embedding_size, args.cnn_activation_function).to(device=args.device)
 reward_model = RewardModel(args.belief_size, args.state_size, args.hidden_size, args.dense_activation_function).to(device=args.device)
