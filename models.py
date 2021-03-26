@@ -115,60 +115,19 @@ class TransitionModel(jit.ScriptModule):
 			prior_std_devs[t + 1] = F.softplus(_prior_std_dev) + self.min_std_dev
 			# prior_states[t + 1] = prior_means[t + 1] + prior_std_devs[t + 1] * torch.randn_like(prior_means[t + 1]) 
 			prior_states[t + 1] = dt.SphericalMultivariateNormal(mu=prior_means[t + 1], logstd=_prior_std_dev, min_std_dev=self.min_std_dev).rsample()    
-
-
-
-			# prior_states[t + 1] = dt.SphericalMultivariateNormal(mu=torch.ones_like(prior_means[t + 1])*10, logstd=torch.ones_like(_prior_std_dev)*10, min_std_dev=self.min_std_dev).rsample()    
-
-
-
-
 			if observations is not None:
 				# Compute state posterior by applying transition dynamics and using current observation
 				t_ = t - 1  # Use t_ to deal with different time indexing for observations
 				hidden = self.act_fn(self.fc_embed_belief_posterior(torch.cat([beliefs[t + 1], observations[t_ + 1]], dim=1)))
 				posterior_means[t + 1], _posterior_std_dev = torch.chunk(self.fc_state_posterior(hidden), 2, dim=1)
 				posterior_std_devs[t + 1] = F.softplus(_posterior_std_dev) + self.min_std_dev
-
-
-				# torch.manual_seed(0)
 				# posterior_states[t + 1] = posterior_means[t + 1] + posterior_std_devs[t + 1] * torch.randn_like(posterior_means[t + 1])
-
-				# a = posterior_states[t + 1].clone()
-
-				# print(posterior_states[t + 1])
-
 				posterior_states[t + 1] = dt.SphericalMultivariateNormal(mu=posterior_means[t + 1], logstd=_posterior_std_dev, min_std_dev=self.min_std_dev).rsample() 
-
-				# torch.manual_seed(0)
-				# posterior_states[t + 1] = dt.SphericalMultivariateNormal(mu=posterior_means[t + 1], logstd=_posterior_std_dev, min_std_dev=self.min_std_dev).rsample()  
-
-
-				# b = posterior_states[t + 1].clone()
-				# print(posterior_states[t + 1])
-
-				# print((a-b).norm())
-
-				# assert False
-
-
-
-
-
-
-
-
-
 
 		# Return new hidden states
 		hidden = [torch.stack(beliefs[1:], dim=0), torch.stack(prior_states[1:], dim=0), torch.stack(prior_means[1:], dim=0), torch.stack(prior_std_devs[1:], dim=0)]
 		if observations is not None:
 			hidden += [torch.stack(posterior_states[1:], dim=0), torch.stack(posterior_means[1:], dim=0), torch.stack(posterior_std_devs[1:], dim=0)]
-
-
-
-		# print(hidden)
-		# assert False
 		return hidden
 
 class SymbolicObservationModel(jit.ScriptModule):
