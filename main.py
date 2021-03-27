@@ -304,6 +304,7 @@ for episode in tqdm(range(metrics['episodes'][-1] + 1, args.episodes + 1), total
 
 
 			### TODO ###
+			ovsht_posterior = Normal(torch.cat(overshooting_vars.posterior_means, dim=1), torch.cat(overshooting_vars.posterior_std_devs, dim=1))
 			ovsht_prior = Normal(ovsht_prior_means, ovsht_prior_std_devs)
 
 
@@ -311,7 +312,7 @@ for episode in tqdm(range(metrics['episodes'][-1] + 1, args.episodes + 1), total
 
 			seq_mask = torch.cat(overshooting_vars.masks, dim=1)
 			# Calculate overshooting KL loss with sequence mask
-			kl_loss += (1 / args.overshooting_distance) * args.overshooting_kl_beta * torch.max((kl_divergence(Normal(torch.cat(overshooting_vars.posterior_means, dim=1), torch.cat(overshooting_vars.posterior_std_devs, dim=1)), ovsht_prior) * seq_mask).sum(dim=2), free_nats).mean(dim=(0, 1)) * (args.chunk_size - 1)  # Update KL loss (compensating for extra average over each overshooting/open loop sequence) 
+			kl_loss += (1 / args.overshooting_distance) * args.overshooting_kl_beta * torch.max((kl_divergence(ovsht_posterior, ovsht_prior) * seq_mask).sum(dim=2), free_nats).mean(dim=(0, 1)) * (args.chunk_size - 1)  # Update KL loss (compensating for extra average over each overshooting/open loop sequence) 
 
 			# Calculate overshooting reward prediction loss with sequence mask
 			if args.overshooting_reward_scale != 0: 
