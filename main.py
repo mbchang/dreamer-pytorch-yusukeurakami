@@ -152,7 +152,32 @@ free_nats = torch.full((1, ), args.free_nats, device=args.device)  # Allowed dev
 def update_belief_and_act(args, env, planner, transition_model, encoder, belief, posterior_state, action, observation, explore=False):
 	# Infer belief over current state q(s_t|o≤t,a<t) from the history
 	# print("action size: ",action.size()) torch.Size([1, 6])
-	belief, _, _, _, posterior_state, _, _ = transition_model(posterior_state, action.unsqueeze(dim=0), belief, encoder(observation).unsqueeze(dim=0))  # Action and observation need extra time dimension
+
+
+	# print('posterior_state', posterior_state.shape)
+	# print('action', action.unsqueeze(dim=0).shape)
+	# print('belief', belief.shape)
+	# print('observation', encoder(observation).unsqueeze(dim=0).shape)
+	# assert False
+
+	belief, _, _, _, posterior_state, _, _ = transition_model(
+		prev_state=posterior_state, 
+		actions=action.unsqueeze(dim=0), 
+		prev_belief=belief, 
+		observations=encoder(observation).unsqueeze(dim=0))  # Action and observation need extra time dimension
+
+
+
+	### TODO ###
+
+
+	############
+
+
+
+
+
+
 	belief, posterior_state = belief.squeeze(dim=0), posterior_state.squeeze(dim=0)  # Remove time dimension from belief/state
 	if args.algo=="dreamer":
 		action = planner.get_action(belief, posterior_state, det=not(explore))
@@ -200,10 +225,34 @@ for episode in tqdm(range(metrics['episodes'][-1] + 1, args.episodes + 1), total
 	for s in tqdm(range(args.collect_interval)):
 		# Draw sequence chunks {(o_t, a_t, r_t+1, terminal_t+1)} ~ D uniformly at random from the dataset (including terminal flags)
 		observations, actions, rewards, nonterminals = D.sample(args.batch_size, args.chunk_size) # Transitions start at time t = 0
+
+
+
+
+
 		# Create initial belief and state for time t = 0
 		init_belief, init_state = torch.zeros(args.batch_size, args.belief_size, device=args.device), torch.zeros(args.batch_size, args.state_size, device=args.device)
 		# Update belief/state using posterior from previous belief/state, previous action and current observation (over entire sequence at once)
-		beliefs, prior_states, prior_means, prior_std_devs, posterior_states, posterior_means, posterior_std_devs = transition_model(init_state, actions[:-1], init_belief, bottle(encoder, (observations[1:], )), nonterminals[:-1])
+		beliefs, prior_states, prior_means, prior_std_devs, posterior_states, posterior_means, posterior_std_devs = transition_model(
+				prev_state=init_state, 
+				actions=actions[:-1], 
+				prev_belief=init_belief, 
+				observations=bottle(encoder, (observations[1:], )), 
+				nonterminals=nonterminals[:-1])
+
+		### TODO ###
+		posterior = Normal(posterior_means, posterior_std_devs)
+		prior = Normal(prior_means, prior_std_devs)
+
+
+		############
+
+
+
+
+
+
+
 		# Calculate observation likelihood, reward likelihood and KL losses (for t = 0 only for latent overshooting); sum over final dims, average over batch and time (original implementation, though paper seems to miss 1/T scaling?)
 		if args.worldmodel_LogProbLoss:
 			observation_dist = Normal(bottle(observation_model, (beliefs, posterior_states)), 1)
@@ -215,11 +264,26 @@ for episode in tqdm(range(metrics['episodes'][-1] + 1, args.episodes + 1), total
 			reward_loss = -reward_dist.log_prob(rewards[:-1]).mean(dim=(0, 1))
 		else:
 			reward_loss = F.mse_loss(bottle(reward_model, (beliefs, posterior_states)), rewards[:-1], reduction='none').mean(dim=(0,1))
+
+
+
+
+
+		# # transition loss
+		# div = kl_divergence(Normal(posterior_means, posterior_std_devs), Normal(prior_means, prior_std_devs)).sum(dim=2)
+		# kl_loss = torch.max(div, free_nats).mean(dim=(0, 1))  # Note that normalisation by overshooting distance and weighting by overshooting distance cancel out
+		# if args.global_kl_beta != 0:
+		# 	kl_loss += args.global_kl_beta * kl_divergence(Normal(posterior_means, posterior_std_devs), global_prior).sum(dim=2).mean(dim=(0, 1))
+
+			
 		# transition loss
-		div = kl_divergence(Normal(posterior_means, posterior_std_devs), Normal(prior_means, prior_std_devs)).sum(dim=2)
+		div = kl_divergence(posterior, prior).sum(dim=2)
 		kl_loss = torch.max(div, free_nats).mean(dim=(0, 1))  # Note that normalisation by overshooting distance and weighting by overshooting distance cancel out
 		if args.global_kl_beta != 0:
-			kl_loss += args.global_kl_beta * kl_divergence(Normal(posterior_means, posterior_std_devs), global_prior).sum(dim=2).mean(dim=(0, 1))
+			kl_loss += args.global_kl_beta * kl_divergence(posterior, global_prior).sum(dim=2).mean(dim=(0, 1))
+
+
+
 		# Calculate latent overshooting objective for t > 0
 		if args.overshooting_kl_beta != 0:
 			overshooting_vars = []  # Collect variables for overshooting to process in batch
@@ -228,15 +292,48 @@ for episode in tqdm(range(metrics['episodes'][-1] + 1, args.episodes + 1), total
 				t_, d_ = t - 1, d - 1  # Use t_ and d_ to deal with different time indexing for latent states
 				seq_pad = (0, 0, 0, 0, 0, t - d + args.overshooting_distance)  # Calculate sequence padding so overshooting terms can be calculated in one batch
 				# Store (0) actions, (1) nonterminals, (2) rewards, (3) beliefs, (4) prior states, (5) posterior means, (6) posterior standard deviations and (7) sequence masks
-				overshooting_vars.append((F.pad(actions[t:d], seq_pad), F.pad(nonterminals[t:d], seq_pad), F.pad(rewards[t:d], seq_pad[2:]), beliefs[t_], prior_states[t_], F.pad(posterior_means[t_ + 1:d_ + 1].detach(), seq_pad), F.pad(posterior_std_devs[t_ + 1:d_ + 1].detach(), seq_pad, value=1), F.pad(torch.ones(d - t, args.batch_size, args.state_size, device=args.device), seq_pad)))  # Posterior standard deviations must be padded with > 0 to prevent infinite KL divergences
+				overshooting_vars.append(
+					(F.pad(actions[t:d], seq_pad), 
+					F.pad(nonterminals[t:d], seq_pad), 
+					F.pad(rewards[t:d], seq_pad[2:]), 
+					beliefs[t_], prior_states[t_], 
+					F.pad(posterior_means[t_ + 1:d_ + 1].detach(), seq_pad), 
+					F.pad(posterior_std_devs[t_ + 1:d_ + 1].detach(), seq_pad, value=1), 
+					F.pad(torch.ones(d - t, args.batch_size, args.state_size, device=args.device), seq_pad)
+					))  # Posterior standard deviations must be padded with > 0 to prevent infinite KL divergences
 			overshooting_vars = tuple(zip(*overshooting_vars))
 			# Update belief/state using prior from previous belief/state and previous action (over entire sequence at once)
 
 			# just added ovsht_ as a prefix
-			ovsht_beliefs, ovsht_prior_states, ovsht_prior_means, ovsht_prior_std_devs = transition_model(torch.cat(overshooting_vars[4], dim=0), torch.cat(overshooting_vars[0], dim=1), torch.cat(overshooting_vars[3], dim=0), None, torch.cat(overshooting_vars[1], dim=1))
+			ovsht_beliefs, ovsht_prior_states, ovsht_prior_means, ovsht_prior_std_devs = transition_model(
+				prev_state=torch.cat(overshooting_vars[4], dim=0), 
+				actions=torch.cat(overshooting_vars[0], dim=1), 
+				prev_belief=torch.cat(overshooting_vars[3], dim=0), 
+				observations=None, 
+				nonterminals=torch.cat(overshooting_vars[1], dim=1))
+
+
+			### TODO ###
+			ovsht_prior = Normal(ovsht_prior_means, ovsht_prior_std_devs)
+
+
+			############
+
+
+
+
+
+
 			seq_mask = torch.cat(overshooting_vars[7], dim=1)
+			# # Calculate overshooting KL loss with sequence mask
+			# kl_loss += (1 / args.overshooting_distance) * args.overshooting_kl_beta * torch.max((kl_divergence(Normal(torch.cat(overshooting_vars[5], dim=1), torch.cat(overshooting_vars[6], dim=1)), Normal(ovsht_prior_means, ovsht_prior_std_devs)) * seq_mask).sum(dim=2), free_nats).mean(dim=(0, 1)) * (args.chunk_size - 1)  # Update KL loss (compensating for extra average over each overshooting/open loop sequence) 
+
+
 			# Calculate overshooting KL loss with sequence mask
-			kl_loss += (1 / args.overshooting_distance) * args.overshooting_kl_beta * torch.max((kl_divergence(Normal(torch.cat(overshooting_vars[5], dim=1), torch.cat(overshooting_vars[6], dim=1)), Normal(ovsht_prior_means, ovsht_prior_std_devs)) * seq_mask).sum(dim=2), free_nats).mean(dim=(0, 1)) * (args.chunk_size - 1)  # Update KL loss (compensating for extra average over each overshooting/open loop sequence) 
+			kl_loss += (1 / args.overshooting_distance) * args.overshooting_kl_beta * torch.max((kl_divergence(Normal(torch.cat(overshooting_vars[5], dim=1), torch.cat(overshooting_vars[6], dim=1)), ovsht_prior) * seq_mask).sum(dim=2), free_nats).mean(dim=(0, 1)) * (args.chunk_size - 1)  # Update KL loss (compensating for extra average over each overshooting/open loop sequence) 
+
+
+			
 			# Calculate overshooting reward prediction loss with sequence mask
 			if args.overshooting_reward_scale != 0: 
 				# assert False
@@ -260,6 +357,17 @@ for episode in tqdm(range(metrics['episodes'][-1] + 1, args.episodes + 1), total
 		with FreezeParameters(model_modules):
 			imagination_traj = imagine_ahead(actor_states, actor_beliefs, actor_model, transition_model, args.planning_horizon)
 		imged_beliefs, imged_prior_states, imged_prior_means, imged_prior_std_devs = imagination_traj
+
+
+
+		### TODO ###
+
+
+		############
+
+
+
+
 		with FreezeParameters(model_modules + value_model.modules):
 			imged_reward = bottle(reward_model, (imged_beliefs, imged_prior_states))
 			value_pred = bottle(value_model, (imged_beliefs, imged_prior_states))
