@@ -232,19 +232,6 @@ for episode in tqdm(range(metrics['episodes'][-1] + 1, args.episodes + 1), total
 			overshooting_vars = tuple(zip(*overshooting_vars))
 			# Update belief/state using prior from previous belief/state and previous action (over entire sequence at once)
 
-
-
-
-			# beliefs, prior_states, prior_means, prior_std_devs = transition_model(torch.cat(overshooting_vars[4], dim=0), torch.cat(overshooting_vars[0], dim=1), torch.cat(overshooting_vars[3], dim=0), None, torch.cat(overshooting_vars[1], dim=1))
-			# seq_mask = torch.cat(overshooting_vars[7], dim=1)
-			# # Calculate overshooting KL loss with sequence mask
-			# kl_loss += (1 / args.overshooting_distance) * args.overshooting_kl_beta * torch.max((kl_divergence(Normal(torch.cat(overshooting_vars[5], dim=1), torch.cat(overshooting_vars[6], dim=1)), Normal(prior_means, prior_std_devs)) * seq_mask).sum(dim=2), free_nats).mean(dim=(0, 1)) * (args.chunk_size - 1)  # Update KL loss (compensating for extra average over each overshooting/open loop sequence) 
-			# # Calculate overshooting reward prediction loss with sequence mask
-			# if args.overshooting_reward_scale != 0: 
-			# 	# assert False
-			# 	reward_loss += (1 / args.overshooting_distance) * args.overshooting_reward_scale * F.mse_loss(bottle(reward_model, (beliefs, prior_states)) * seq_mask[:, :, 0], torch.cat(overshooting_vars[2], dim=1), reduction='none').mean(dim=(0, 1)) * (args.chunk_size - 1)  # Update reward loss (compensating for extra average over each overshooting/open loop sequence) 
-
-
 			# just added ovsht_ as a prefix
 			ovsht_beliefs, ovsht_prior_states, ovsht_prior_means, ovsht_prior_std_devs = transition_model(torch.cat(overshooting_vars[4], dim=0), torch.cat(overshooting_vars[0], dim=1), torch.cat(overshooting_vars[3], dim=0), None, torch.cat(overshooting_vars[1], dim=1))
 			seq_mask = torch.cat(overshooting_vars[7], dim=1)
@@ -254,11 +241,6 @@ for episode in tqdm(range(metrics['episodes'][-1] + 1, args.episodes + 1), total
 			if args.overshooting_reward_scale != 0: 
 				# assert False
 				reward_loss += (1 / args.overshooting_distance) * args.overshooting_reward_scale * F.mse_loss(bottle(reward_model, (ovsht_beliefs, ovsht_prior_states)) * seq_mask[:, :, 0], torch.cat(overshooting_vars[2], dim=1), reduction='none').mean(dim=(0, 1)) * (args.chunk_size - 1)  # Update reward loss (compensating for extra average over each overshooting/open loop sequence) 
-
-
-
-
-
 
 		# Apply linearly ramping learning rate schedule
 		if args.learning_rate_schedule != 0:

@@ -113,7 +113,6 @@ class TransitionModel(jit.ScriptModule):
 			hidden = self.act_fn(self.fc_embed_belief_prior(beliefs[t + 1]))
 			prior_means[t + 1], _prior_std_dev = torch.chunk(self.fc_state_prior(hidden), 2, dim=1)
 			prior_std_devs[t + 1] = F.softplus(_prior_std_dev) + self.min_std_dev
-			# prior_states[t + 1] = prior_means[t + 1] + prior_std_devs[t + 1] * torch.randn_like(prior_means[t + 1]) 
 			prior_states[t + 1] = dt.SphericalMultivariateNormal(mu=prior_means[t + 1], logstd=_prior_std_dev, min_std_dev=self.min_std_dev).rsample()    
 			if observations is not None:
 				# Compute state posterior by applying transition dynamics and using current observation
@@ -121,7 +120,6 @@ class TransitionModel(jit.ScriptModule):
 				hidden = self.act_fn(self.fc_embed_belief_posterior(torch.cat([beliefs[t + 1], observations[t_ + 1]], dim=1)))
 				posterior_means[t + 1], _posterior_std_dev = torch.chunk(self.fc_state_posterior(hidden), 2, dim=1)
 				posterior_std_devs[t + 1] = F.softplus(_posterior_std_dev) + self.min_std_dev
-				# posterior_states[t + 1] = posterior_means[t + 1] + posterior_std_devs[t + 1] * torch.randn_like(posterior_means[t + 1])
 				posterior_states[t + 1] = dt.SphericalMultivariateNormal(mu=posterior_means[t + 1], logstd=_posterior_std_dev, min_std_dev=self.min_std_dev).rsample() 
 
 		# Return new hidden states
