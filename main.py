@@ -200,7 +200,11 @@ if args.test:
 		total_reward = 0
 		for _ in tqdm(range(args.test_episodes)):
 			observation = env.reset()
-			belief, posterior_state, action = torch.zeros(1, args.belief_size, device=args.device), torch.zeros(1, args.state_size, device=args.device), torch.zeros(1, env.action_size, device=args.device)
+
+			belief, posterior_state = transition_model.initial_step(batch_size=1, args=args)
+			action = torch.zeros(1, env.action_size, device=args.device)
+
+
 			pbar = tqdm(range(args.max_episode_length // args.action_repeat))
 			for t in pbar:
 				belief, posterior_state, action, observation, reward, done = update_belief_and_act(args, env, planner, transition_model, encoder, belief, posterior_state, action, observation.to(device=args.device))
@@ -231,7 +235,8 @@ for episode in tqdm(range(metrics['episodes'][-1] + 1, args.episodes + 1), total
 
 
 		# Create initial belief and state for time t = 0
-		init_belief, init_state = torch.zeros(args.batch_size, args.belief_size, device=args.device), torch.zeros(args.batch_size, args.state_size, device=args.device)
+		init_belief, init_state = transition_model.initial_step(batch_size=args.batch_size, args=args)
+
 		# Update belief/state using posterior from previous belief/state, previous action and current observation (over entire sequence at once)
 		beliefs, prior_states, prior_means, prior_std_devs, posterior_states, posterior_means, posterior_std_devs = transition_model(
 				prev_state=init_state, 

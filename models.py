@@ -35,6 +35,11 @@ class TransitionModel(jit.ScriptModule):
 		self.fc_state_posterior = nn.Linear(hidden_size, 2 * state_size)
 		self.modules = [self.fc_embed_state_action, self.fc_embed_belief_prior, self.fc_state_prior, self.fc_embed_belief_posterior, self.fc_state_posterior]
 
+
+	def initial_step(self, batch_size, args):
+		init_belief, init_state = torch.zeros(batch_size, args.belief_size, device=args.device), torch.zeros(batch_size, args.state_size, device=args.device)
+		return init_belief, init_state
+
 	# Operates over (previous) state, (previous) actions, (previous) belief, (previous) nonterminals (mask), and (current) observations
 	# Diagram of expected inputs and outputs for T = 5 (-x- signifying beginning of output belief/state that gets sliced off):
 	# t :  0  1  2  3  4  5
