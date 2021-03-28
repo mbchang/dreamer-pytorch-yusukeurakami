@@ -85,21 +85,30 @@ class TransitionModel(jit.ScriptModule):
 		for t in range(T - 1):
 			_state = prior_states[t] if observations is None else posterior_states[t]  # Select appropriate previous state
 			_state = _state if nonterminals is None else _state * nonterminals[t]  # Mask if previous transition was terminal
-			# Compute belief (deterministic hidden state)
-			hidden = self.act_fn(self.fc_embed_state_action(torch.cat([_state, actions[t]], dim=1)))
-			beliefs[t + 1] = self.rnn(hidden, beliefs[t])
-			# Compute state prior by applying transition dynamics
-			hidden = self.act_fn(self.fc_embed_belief_prior(beliefs[t + 1]))
-			prior_means[t + 1], _prior_std_dev = torch.chunk(self.fc_state_prior(hidden), 2, dim=1)
-			prior_std_devs[t + 1] = F.softplus(_prior_std_dev) + self.min_std_dev
-			prior_states[t + 1] = dt.SphericalMultivariateNormal(mu=prior_means[t + 1], logstd=_prior_std_dev, min_std_dev=self.min_std_dev).rsample()    
+
+			
+			# # Compute belief (deterministic hidden state)
+			# hidden = self.act_fn(self.fc_embed_state_action(torch.cat([_state, actions[t]], dim=1)))
+			# beliefs[t + 1] = self.rnn(hidden, beliefs[t])
+			# # Compute state prior by applying transition dynamics
+			# hidden = self.act_fn(self.fc_embed_belief_prior(beliefs[t + 1]))
+			# prior_means[t + 1], _prior_std_dev = torch.chunk(self.fc_state_prior(hidden), 2, dim=1)
+			# prior_std_devs[t + 1] = F.softplus(_prior_std_dev) + self.min_std_dev
+			# # prior_states[t + 1] = dt.SphericalMultivariateNormal(mu=prior_means[t + 1], logstd=_prior_std_dev, min_std_dev=self.min_std_dev).rsample() 
+			# # prior_states[t + 1] = prior_means[t + 1] + prior_std_devs[t + 1] * torch.randn_like(prior_means[t + 1])   
+			# prior_states[t + 1] = prior_means[t + 1] + prior_std_devs[t + 1] * torch.randn_like(prior_means[t + 1])
+
+			beliefs[t+1], hidden, prior_means[t + 1], prior_std_devs[t + 1], prior_states[t + 1] = self.generate_step(belief_t=beliefs[t], state_t=_state, action_t=actions[t])
+
 			if observations is not None:
 				# Compute state posterior by applying transition dynamics and using current observation
 				t_ = t - 1  # Use t_ to deal with different time indexing for observations
 				hidden = self.act_fn(self.fc_embed_belief_posterior(torch.cat([beliefs[t + 1], observations[t_ + 1]], dim=1)))
 				posterior_means[t + 1], _posterior_std_dev = torch.chunk(self.fc_state_posterior(hidden), 2, dim=1)
 				posterior_std_devs[t + 1] = F.softplus(_posterior_std_dev) + self.min_std_dev
-				posterior_states[t + 1] = dt.SphericalMultivariateNormal(mu=posterior_means[t + 1], logstd=_posterior_std_dev, min_std_dev=self.min_std_dev).rsample() 
+				# posterior_states[t + 1] = dt.SphericalMultivariateNormal(mu=posterior_means[t + 1], logstd=_posterior_std_dev, min_std_dev=self.min_std_dev).rsample() 
+				# posterior_states
+				posterior_states[t + 1] = posterior_means[t + 1] + posterior_std_devs[t + 1] * torch.randn_like(posterior_means[t + 1])
 
 		# Return new hidden states
 		hidden = [torch.stack(beliefs[1:], dim=0), torch.stack(prior_states[1:], dim=0), torch.stack(prior_means[1:], dim=0), torch.stack(prior_std_devs[1:], dim=0)]
@@ -121,6 +130,20 @@ class TransitionModel(jit.ScriptModule):
 # prior_states torch.Size([19, 8, 30])
 
 		return hidden
+
+
+	@jit.script_method
+	def generate_step(self, belief_t, state_t, action_t):
+		hidden = self.act_fn(self.fc_embed_state_action(torch.cat([state_t, action_t], dim=1)))
+		belief_tp1 = self.rnn(hidden, belief_t)
+		# Compute state prior by applying transition dynamics
+		hidden = self.act_fn(self.fc_embed_belief_prior(belief_tp1))
+		prior_means_tp1, _prior_std_dev = torch.chunk(self.fc_state_prior(hidden), 2, dim=1)
+		prior_std_devs_tp1 = F.softplus(_prior_std_dev) + self.min_std_dev
+		prior_states_tp1 = prior_means_tp1 + prior_std_devs_tp1 * torch.randn_like(prior_means_tp1)
+		return belief_tp1, hidden, prior_means_tp1, prior_std_devs_tp1, prior_states_tp1
+
+
 
 	@jit.script_method
 	def filter(self, prev_state:torch.Tensor, actions:torch.Tensor, prev_belief:torch.Tensor, observations:Optional[torch.Tensor]=None, nonterminals:Optional[torch.Tensor]=None) -> List[torch.Tensor]:

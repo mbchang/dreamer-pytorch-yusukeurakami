@@ -62,14 +62,22 @@ def imagine_ahead(prev_state, prev_belief, policy, transition_model, planning_ho
 	for t in range(T - 1):
 		_state = prior_states[t]
 		actions = policy.get_action(beliefs[t].detach(),_state.detach())
-		# Compute belief (deterministic hidden state)
-		hidden = transition_model.act_fn(transition_model.fc_embed_state_action(torch.cat([_state, actions], dim=1)))
-		beliefs[t + 1] = transition_model.rnn(hidden, beliefs[t])
-		# Compute state prior by applying transition dynamics
-		hidden = transition_model.act_fn(transition_model.fc_embed_belief_prior(beliefs[t + 1]))
-		prior_means[t + 1], _prior_std_dev = torch.chunk(transition_model.fc_state_prior(hidden), 2, dim=1)
-		prior_std_devs[t + 1] = F.softplus(_prior_std_dev) + transition_model.min_std_dev
-		prior_states[t + 1] = prior_means[t + 1] + prior_std_devs[t + 1] * torch.randn_like(prior_means[t + 1])     
+
+		# print('actions', actions.shape)  # (bsize, action_dim)
+
+		# # Compute belief (deterministic hidden state)
+		# hidden = transition_model.act_fn(transition_model.fc_embed_state_action(torch.cat([_state, actions], dim=1)))
+		# beliefs[t + 1] = transition_model.rnn(hidden, beliefs[t])
+		# # Compute state prior by applying transition dynamics
+		# hidden = transition_model.act_fn(transition_model.fc_embed_belief_prior(beliefs[t + 1]))
+		# prior_means[t + 1], _prior_std_dev = torch.chunk(transition_model.fc_state_prior(hidden), 2, dim=1)
+		# prior_std_devs[t + 1] = F.softplus(_prior_std_dev) + transition_model.min_std_dev
+		# prior_states[t + 1] = prior_means[t + 1] + prior_std_devs[t + 1] * torch.randn_like(prior_means[t + 1])     
+
+		beliefs[t+1], hidden, prior_means[t + 1], prior_std_devs[t + 1], prior_states[t + 1] = transition_model.generate_step(belief_t=beliefs[t], state_t=_state, action_t=actions)
+
+
+
 	# Return new hidden states
 	# imagined_traj = [beliefs, prior_states, prior_means, prior_std_devs]
 	imagined_traj = [torch.stack(beliefs[1:], dim=0), torch.stack(prior_states[1:], dim=0), torch.stack(prior_means[1:], dim=0), torch.stack(prior_std_devs[1:], dim=0)]
