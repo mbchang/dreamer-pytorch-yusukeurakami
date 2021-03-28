@@ -127,33 +127,33 @@ print('Initializing model...')
 
 ####################################
 
-transition_model = TransitionModel(args.belief_size, args.state_size, env.action_size, args.hidden_size, args.embedding_size, args.dense_activation_function).to(device=args.device)
+# transition_model = TransitionModel(args.belief_size, args.state_size, env.action_size, args.hidden_size, args.embedding_size, args.dense_activation_function).to(device=args.device)
 
 
 # --------------
 
-# transition_model = lvm.SlotTransitionModel(
-# 	recognition_model=ssa.RecognitionModel(
-# 		num_slots=5,
-# 		interface_dim=args.belief_size//5,
-# 		slot_dim=args.belief_size//5,
-# 		iters=3,
-# 		slot_temp=0.1
-# 		),
-# 	dynamics_model=dm.RSSM(
-# 		stoch_dim=args.state_size//5,
-# 		model=dm.SlotDynamicsModel(
-# 			state_dim=args.belief_size//5, 
-# 			action_dim=env.action_size, 
-# 			hid_dim=args.hidden_size//5, 
-# 			interaction_type='pairwise')),
-# 	rssm_head=dm.RSSMHead(
-# 		indim=args.belief_size//5,
-# 		outdim=args.belief_size//5+args.state_size//5,
-# 		),
-# 	mode='dynamics',
-# 	device=args.device
-# 	)
+transition_model = lvm.SlotTransitionModel(
+	recognition_model=ssa.RecognitionModel(
+		num_slots=5,
+		interface_dim=args.belief_size//5,
+		slot_dim=args.belief_size//5,
+		iters=3,
+		slot_temp=0.1
+		),
+	dynamics_model=dm.RSSM(
+		stoch_dim=args.state_size//5,
+		model=dm.SlotDynamicsModel(
+			state_dim=args.belief_size//5, 
+			action_dim=env.action_size, 
+			hid_dim=args.hidden_size//5, 
+			interaction_type='pairwise')),
+	rssm_head=dm.RSSMHead(
+		indim=args.belief_size//5,
+		outdim=args.state_size//5,
+		),
+	mode='dynamics',
+	device=args.device
+	)
 
 # assert False
 ####################################
@@ -162,7 +162,17 @@ transition_model = TransitionModel(args.belief_size, args.state_size, env.action
 
 observation_model = ObservationModel(args.symbolic_env, env.observation_size, args.belief_size, args.state_size, args.embedding_size, args.cnn_activation_function).to(device=args.device)
 reward_model = RewardModel(args.belief_size, args.state_size, args.hidden_size, args.dense_activation_function).to(device=args.device)
-encoder = Encoder(args.symbolic_env, env.observation_size, args.embedding_size, args.cnn_activation_function).to(device=args.device)
+
+####################################
+# encoder = Encoder(args.symbolic_env, env.observation_size, args.embedding_size, args.cnn_activation_function).to(device=args.device)
+# --------------
+encoder = lvm.IdentityEncoder()
+####################################
+
+
+# print(encoder)
+# assert False
+
 actor_model = ActorModel(args.belief_size, args.state_size, args.hidden_size, env.action_size, args.dense_activation_function).to(device=args.device)
 value_model = ValueModel(args.belief_size, args.state_size, args.hidden_size, args.dense_activation_function).to(device=args.device)
 param_list = list(transition_model.parameters()) + list(observation_model.parameters()) + list(reward_model.parameters()) + list(encoder.parameters())
@@ -241,7 +251,10 @@ if args.test:
 		for _ in tqdm(range(args.test_episodes)):
 			observation = env.reset()
 
-			belief, posterior_state = transition_model.initial_step(batch_size=1, args=args)
+			# print('update_belief_and_act')
+			# print(observation.shape)
+
+			belief, posterior_state = transition_model.initial_step(observation=observation, device=args.device)
 			action = torch.zeros(1, env.action_size, device=args.device)
 
 
@@ -270,12 +283,13 @@ for episode in tqdm(range(metrics['episodes'][-1] + 1, args.episodes + 1), total
 		# Draw sequence chunks {(o_t, a_t, r_t+1, terminal_t+1)} ~ D uniformly at random from the dataset (including terminal flags)
 		observations, actions, rewards, nonterminals = D.sample(args.batch_size, args.chunk_size) # Transitions start at time t = 0
 
-
-
+		# print('filter')
+		# print(observations[0].shape)  # orch.Size([8, 3, 64, 64])
+		# assert False
 
 
 		# Create initial belief and state for time t = 0
-		init_belief, init_state = transition_model.initial_step(batch_size=args.batch_size, args=args)
+		init_belief, init_state = transition_model.initial_step(observation=observations[0], device=args.device)
 
 		# Update belief/state using posterior from previous belief/state, previous action and current observation (over entire sequence at once)
 		beliefs, prior_states, prior_means, prior_std_devs, posterior_states, posterior_means, posterior_std_devs = transition_model.filter(
@@ -441,10 +455,26 @@ for episode in tqdm(range(metrics['episodes'][-1] + 1, args.episodes + 1), total
 	print("Data collection")
 	with torch.no_grad():
 		observation, total_reward = env.reset(), 0
-		belief, posterior_state, action = torch.zeros(1, args.belief_size, device=args.device), torch.zeros(1, args.state_size, device=args.device), torch.zeros(1, env.action_size, device=args.device)
+
+
+
+		# belief, posterior_state, action = torch.zeros(1, args.belief_size, device=args.device), torch.zeros(1, args.state_size, device=args.device), torch.zeros(1, env.action_size, device=args.device)
+
+		# belief, posterior_state = transition_model.initial_step(batch_size=1, args=args)
+		belief, posterior_state = transition_model.initial_step(observation=observation, device=args.device)
+		action = torch.zeros(1, env.action_size, device=args.device)
+
+
 		pbar = tqdm(range(args.max_episode_length // args.action_repeat))
 		for t in pbar:
 			# print("step",t)
+
+
+
+
+			# print('update_belief_and_act')
+			# print(observation.shape)
+
 			belief, posterior_state, action, next_observation, reward, done = update_belief_and_act(args, env, planner, transition_model, encoder, belief, posterior_state, action, observation.to(device=args.device), explore=True)
 			D.append(observation, action.cpu(), reward, done)
 			total_reward += reward

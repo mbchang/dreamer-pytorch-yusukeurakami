@@ -25,6 +25,9 @@ class TransitionModel(jit.ScriptModule):
 
 	def __init__(self, belief_size, state_size, action_size, hidden_size, embedding_size, activation_function='relu', min_std_dev=0.1):
 		super().__init__()
+		self.belief_size = belief_size
+		self.state_size = state_size
+
 		self.act_fn = getattr(F, activation_function)
 		self.min_std_dev = min_std_dev
 		self.fc_embed_state_action = nn.Linear(state_size + action_size, belief_size)
@@ -36,9 +39,15 @@ class TransitionModel(jit.ScriptModule):
 		self.modules = [self.fc_embed_state_action, self.fc_embed_belief_prior, self.fc_state_prior, self.fc_embed_belief_posterior, self.fc_state_posterior]
 
 
-	def initial_step(self, batch_size, args):
-		init_belief, init_state = torch.zeros(batch_size, args.belief_size, device=args.device), torch.zeros(batch_size, args.state_size, device=args.device)
+	# def initial_step(self, batch_size, args):
+	# 	init_belief, init_state = torch.zeros(batch_size, args.belief_size, device=args.device), torch.zeros(batch_size, args.state_size, device=args.device)
+	# 	return init_belief, init_state
+
+	def initial_step(self, observation, device):
+		batch_size = observation.shape[0]
+		init_belief, init_state = torch.zeros(batch_size, self.belief_size, device=device), torch.zeros(batch_size, self.state_size, device=device)
 		return init_belief, init_state
+
 
 	# Operates over (previous) state, (previous) actions, (previous) belief, (previous) nonterminals (mask), and (current) observations
 	# Diagram of expected inputs and outputs for T = 5 (-x- signifying beginning of output belief/state that gets sliced off):
@@ -57,6 +66,17 @@ class TransitionModel(jit.ScriptModule):
 		Output: beliefs, prior_states, prior_means, prior_std_devs, posterior_states, posterior_means, posterior_std_devs
 						torch.Size([49, 50, 200]) torch.Size([49, 50, 30]) torch.Size([49, 50, 30]) torch.Size([49, 50, 30]) torch.Size([49, 50, 30]) torch.Size([49, 50, 30]) torch.Size([49, 50, 30])
 		'''
+
+		# print('actions', actions.shape)
+		# print('observations', observations.shape)
+		# print('nonterminals', nonterminals.shape)
+
+# ctions torch.Size([19, 8, 6])                              | 0/4 [00:00<?, ?it/s]
+# observations torch.Size([19, 8, 1024])
+# nonterminals torch.Size([19, 8, 1])
+
+		# assert False
+
 		# Create lists for hidden states (cannot use single tensor as buffer because autograd won't work with inplace writes)
 		T = actions.size(0) + 1
 		beliefs, prior_states, prior_means, prior_std_devs, posterior_states, posterior_means, posterior_std_devs = [torch.empty(0)] * T, [torch.empty(0)] * T, [torch.empty(0)] * T, [torch.empty(0)] * T, [torch.empty(0)] * T, [torch.empty(0)] * T, [torch.empty(0)] * T
@@ -85,6 +105,21 @@ class TransitionModel(jit.ScriptModule):
 		hidden = [torch.stack(beliefs[1:], dim=0), torch.stack(prior_states[1:], dim=0), torch.stack(prior_means[1:], dim=0), torch.stack(prior_std_devs[1:], dim=0)]
 		if observations is not None:
 			hidden += [torch.stack(posterior_states[1:], dim=0), torch.stack(posterior_means[1:], dim=0), torch.stack(posterior_std_devs[1:], dim=0)]
+
+
+
+
+
+
+
+
+		# print('beliefs', hidden[0].shape)
+		# print('prior_states', hidden[1].shape)
+		# assert False
+
+# eliefs torch.Size([19, 8, 200])                            | 0/4 [00:00<?, ?it/s]
+# prior_states torch.Size([19, 8, 30])
+
 		return hidden
 
 	@jit.script_method
