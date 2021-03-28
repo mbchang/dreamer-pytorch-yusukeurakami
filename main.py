@@ -16,6 +16,9 @@ from utils import lineplot, write_video, imagine_ahead, lambda_return, FreezePar
 from tensorboardX import SummaryWriter
 
 import slots.interfaces as itf
+import slots.latent_variable_model as lvm
+import slots.static_slot_attention as ssa
+import slots.dynamics_models as dm
 
 
 # Hyperparameters
@@ -119,7 +122,44 @@ elif not args.test:
 
 # Initialise model parameters randomly
 print('Initializing model...')
+
+
+
+####################################
+
 transition_model = TransitionModel(args.belief_size, args.state_size, env.action_size, args.hidden_size, args.embedding_size, args.dense_activation_function).to(device=args.device)
+
+
+# --------------
+
+# transition_model = lvm.SlotTransitionModel(
+# 	recognition_model=ssa.RecognitionModel(
+# 		num_slots=5,
+# 		interface_dim=args.belief_size//5,
+# 		slot_dim=args.belief_size//5,
+# 		iters=3,
+# 		slot_temp=0.1
+# 		),
+# 	dynamics_model=dm.RSSM(
+# 		stoch_dim=args.state_size//5,
+# 		model=dm.SlotDynamicsModel(
+# 			state_dim=args.belief_size//5, 
+# 			action_dim=env.action_size, 
+# 			hid_dim=args.hidden_size//5, 
+# 			interaction_type='pairwise')),
+# 	rssm_head=dm.RSSMHead(
+# 		indim=args.belief_size//5,
+# 		outdim=args.belief_size//5+args.state_size//5,
+# 		),
+# 	mode='dynamics',
+# 	device=args.device
+# 	)
+
+# assert False
+####################################
+
+
+
 observation_model = ObservationModel(args.symbolic_env, env.observation_size, args.belief_size, args.state_size, args.embedding_size, args.cnn_activation_function).to(device=args.device)
 reward_model = RewardModel(args.belief_size, args.state_size, args.hidden_size, args.dense_activation_function).to(device=args.device)
 encoder = Encoder(args.symbolic_env, env.observation_size, args.embedding_size, args.cnn_activation_function).to(device=args.device)
@@ -160,7 +200,7 @@ def update_belief_and_act(args, env, planner, transition_model, encoder, belief,
 	# print('observation', encoder(observation).unsqueeze(dim=0).shape)
 	# assert False
 
-	belief, _, _, _, posterior_state, _, _ = transition_model(
+	belief, _, _, _, posterior_state, _, _ = transition_model.filter_step(
 		prev_state=posterior_state, 
 		actions=action.unsqueeze(dim=0), 
 		prev_belief=belief, 
@@ -238,7 +278,7 @@ for episode in tqdm(range(metrics['episodes'][-1] + 1, args.episodes + 1), total
 		init_belief, init_state = transition_model.initial_step(batch_size=args.batch_size, args=args)
 
 		# Update belief/state using posterior from previous belief/state, previous action and current observation (over entire sequence at once)
-		beliefs, prior_states, prior_means, prior_std_devs, posterior_states, posterior_means, posterior_std_devs = transition_model(
+		beliefs, prior_states, prior_means, prior_std_devs, posterior_states, posterior_means, posterior_std_devs = transition_model.filter(
 				prev_state=init_state, 
 				actions=actions[:-1], 
 				prev_belief=init_belief, 
@@ -300,7 +340,7 @@ for episode in tqdm(range(metrics['episodes'][-1] + 1, args.episodes + 1), total
 			overshooting_vars = itf.Overshooting(*zip(*overshooting_vars))
 			# Update belief/state using prior from previous belief/state and previous action (over entire sequence at once)
 			# just added ovsht_ as a prefix
-			ovsht_beliefs, ovsht_prior_states, ovsht_prior_means, ovsht_prior_std_devs = transition_model(
+			ovsht_beliefs, ovsht_prior_states, ovsht_prior_means, ovsht_prior_std_devs = transition_model.generate(
 				prev_state=torch.cat(overshooting_vars.prior_states, dim=0), 
 				actions=torch.cat(overshooting_vars.actions, dim=1), 
 				prev_belief=torch.cat(overshooting_vars.beliefs, dim=0), 

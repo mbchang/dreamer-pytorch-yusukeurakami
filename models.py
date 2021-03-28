@@ -87,6 +87,18 @@ class TransitionModel(jit.ScriptModule):
 			hidden += [torch.stack(posterior_states[1:], dim=0), torch.stack(posterior_means[1:], dim=0), torch.stack(posterior_std_devs[1:], dim=0)]
 		return hidden
 
+	@jit.script_method
+	def filter(self, prev_state:torch.Tensor, actions:torch.Tensor, prev_belief:torch.Tensor, observations:Optional[torch.Tensor]=None, nonterminals:Optional[torch.Tensor]=None) -> List[torch.Tensor]:
+		return self.forward(prev_state=prev_state, actions=actions, prev_belief=prev_belief, observations=observations, nonterminals=nonterminals)
+
+	@jit.script_method
+	def filter_step(self, prev_state:torch.Tensor, actions:torch.Tensor, prev_belief:torch.Tensor, observations:Optional[torch.Tensor]=None, nonterminals:Optional[torch.Tensor]=None) -> List[torch.Tensor]:
+		return self.forward(prev_state=prev_state, actions=actions, prev_belief=prev_belief, observations=observations, nonterminals=nonterminals)
+
+	@jit.script_method
+	def generate(self, prev_state:torch.Tensor, actions:torch.Tensor, prev_belief:torch.Tensor, observations:Optional[torch.Tensor]=None, nonterminals:Optional[torch.Tensor]=None) -> List[torch.Tensor]:
+		return self.forward(prev_state=prev_state, actions=actions, prev_belief=prev_belief, observations=observations, nonterminals=nonterminals)
+
 class SymbolicObservationModel(jit.ScriptModule):
 	def __init__(self, observation_size, belief_size, state_size, embedding_size, activation_function='relu'):
 		super().__init__()
