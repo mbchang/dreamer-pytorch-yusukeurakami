@@ -127,33 +127,33 @@ print('Initializing model...')
 
 ####################################
 
-transition_model = TransitionModel(args.belief_size, args.state_size, env.action_size, args.hidden_size, args.embedding_size, args.dense_activation_function).to(device=args.device)
+# transition_model = TransitionModel(args.belief_size, args.state_size, env.action_size, args.hidden_size, args.embedding_size, args.dense_activation_function).to(device=args.device)
 
 
 # --------------
 
-# transition_model = lvm.SlotTransitionModel(
-# 	recognition_model=ssa.RecognitionModel(
-# 		num_slots=5,
-# 		interface_dim=args.belief_size//5,
-# 		slot_dim=args.belief_size//5,
-# 		iters=3,
-# 		slot_temp=0.1
-# 		),
-# 	dynamics_model=dm.RSSM(
-# 		stoch_dim=args.state_size//5,
-# 		model=dm.SlotDynamicsModel(
-# 			state_dim=args.belief_size//5, 
-# 			action_dim=env.action_size, 
-# 			hid_dim=args.hidden_size//5, 
-# 			interaction_type='pairwise')),
-# 	rssm_head=dm.RSSMHead(
-# 		indim=args.belief_size//5,
-# 		outdim=args.state_size//5,
-# 		),
-# 	mode='dynamics',
-# 	device=args.device
-# 	)
+transition_model = lvm.SlotTransitionModel(
+	recognition_model=ssa.RecognitionModel(
+		num_slots=5,
+		interface_dim=args.belief_size//5,
+		slot_dim=args.belief_size//5,
+		iters=3,
+		slot_temp=0.1
+		),
+	dynamics_model=dm.RSSM(
+		stoch_dim=args.state_size//5,
+		model=dm.SlotDynamicsModel(
+			state_dim=args.belief_size//5, 
+			action_dim=env.action_size, 
+			hid_dim=args.hidden_size//5, 
+			interaction_type='pairwise')),
+	rssm_head=dm.RSSMHead(
+		indim=args.belief_size//5,
+		outdim=args.state_size//5,
+		),
+	mode='dynamics',
+	device=args.device
+	)
 
 # assert False
 ####################################
@@ -164,9 +164,9 @@ observation_model = ObservationModel(args.symbolic_env, env.observation_size, ar
 reward_model = RewardModel(args.belief_size, args.state_size, args.hidden_size, args.dense_activation_function).to(device=args.device)
 
 ####################################
-encoder = Encoder(args.symbolic_env, env.observation_size, args.embedding_size, args.cnn_activation_function).to(device=args.device)
+# encoder = Encoder(args.symbolic_env, env.observation_size, args.embedding_size, args.cnn_activation_function).to(device=args.device)
 # --------------
-# encoder = lvm.IdentityEncoder()
+encoder = lvm.IdentityEncoder()
 ####################################
 
 
