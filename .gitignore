@@ -122,3 +122,6 @@ MUJOCO_LOG.TXT
 test.py
 .vscode/
 results-dev
+
+# Debug
+debug_output/temp_*
