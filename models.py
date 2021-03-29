@@ -82,12 +82,19 @@ class TransitionModel(jit.ScriptModule):
 				posterior_states[t + 1] = posterior_means[t + 1] + posterior_std_devs[t + 1] * torch.randn_like(posterior_means[t + 1])
 
 		# Return new hidden states
-		hidden = [torch.stack(beliefs[1:], dim=0), torch.stack(prior_states[1:], dim=0), torch.stack(prior_means[1:], dim=0), torch.stack(prior_std_devs[1:], dim=0)]
-		if observations is not None:
-			hidden += [torch.stack(posterior_states[1:], dim=0), torch.stack(posterior_means[1:], dim=0), torch.stack(posterior_std_devs[1:], dim=0)]
-
-		return hidden
-
+		beliefs = torch.stack(beliefs[1:], dim=0)
+		prior_states = torch.stack(prior_states[1:], dim=0)
+		prior_means = torch.stack(prior_means[1:], dim=0)
+		prior_std_devs = torch.stack(prior_std_devs[1:], dim=0)
+		prior = Normal(prior_means, prior_std_devs)
+		if observations is None:
+			return beliefs, prior_states, prior
+		else:
+			posterior_states = torch.stack(posterior_states[1:], dim=0)
+			posterior_means = torch.stack(posterior_means[1:], dim=0)
+			posterior_std_devs = torch.stack(posterior_std_devs[1:], dim=0)
+			posterior = Normal(posterior_means, posterior_std_devs)
+			return beliefs, prior_states, prior, posterior_states, posterior
 
 	@jit.script_method
 	def generate_step(self, belief_t, state_t, action_t):
