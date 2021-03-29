@@ -190,18 +190,11 @@ free_nats = torch.full((1, ), args.free_nats, device=args.device)  # Allowed dev
 
 def update_belief_and_act(args, env, planner, transition_model, encoder, belief, posterior_state, action, observation, explore=False):
 	# Infer belief over current state q(s_t|o≤t,a<t) from the history
-	# belief, _, _, _, posterior_state, _, _ = transition_model.filter_step(
-	# 	prev_state=posterior_state, 
-	# 	actions=action.unsqueeze(dim=0), 
-	# 	prev_belief=belief, 
-	# 	observations=encoder(observation).unsqueeze(dim=0))  # Action and observation need extra time dimension
-
-	belief, _, _, posterior_state, _, = transition_model.filter_step(
+	belief, posterior_state = transition_model.filter_step(
 		prev_state=posterior_state, 
 		actions=action.unsqueeze(dim=0), 
 		prev_belief=belief, 
 		observations=encoder(observation).unsqueeze(dim=0))  # Action and observation need extra time dimension
-
 
 	belief, posterior_state = belief.squeeze(dim=0), posterior_state.squeeze(dim=0)  # Remove time dimension from belief/state
 	if args.algo=="dreamer":
@@ -256,28 +249,12 @@ for episode in tqdm(range(metrics['episodes'][-1] + 1, args.episodes + 1), total
 		init_belief, init_state = transition_model.initial_step(observation=observations[0], device=args.device)
 
 		# Update belief/state using posterior from previous belief/state, previous action and current observation (over entire sequence at once)
-		# beliefs, prior_states, prior_means, prior_std_devs, posterior_states, posterior_means, posterior_std_devs = transition_model.filter(
-		# 		prev_state=init_state, 
-		# 		actions=actions[:-1], 
-		# 		prev_belief=init_belief, 
-		# 		observations=bottle(encoder, (observations[1:], )), 
-		# 		nonterminals=nonterminals[:-1])
-
-
 		beliefs, prior_states, prior, posterior_states, posterior = transition_model.filter(
 				prev_state=init_state, 
 				actions=actions[:-1], 
 				prev_belief=init_belief, 
 				observations=bottle(encoder, (observations[1:], )), 
 				nonterminals=nonterminals[:-1])
-
-		### TODO ###
-		# posterior = Normal(posterior_means, posterior_std_devs)
-		# prior = Normal(prior_means, prior_std_devs)
-
-		# print(posterior)
-
-		############
 
 		# Calculate observation likelihood, reward likelihood and KL losses (for t = 0 only for latent overshooting); sum over final dims, average over batch and time (original implementation, though paper seems to miss 1/T scaling?)
 		if args.worldmodel_LogProbLoss:
@@ -306,18 +283,6 @@ for episode in tqdm(range(metrics['episodes'][-1] + 1, args.episodes + 1), total
 				t_, d_ = t - 1, d - 1  # Use t_ and d_ to deal with different time indexing for latent states
 				seq_pad = (0, 0, 0, 0, 0, t - d + args.overshooting_distance)  # Calculate sequence padding so overshooting terms can be calculated in one batch
 				# Store (0) actions, (1) nonterminals, (2) rewards, (3) beliefs, (4) prior states, (5) posterior means, (6) posterior standard deviations and (7) sequence masks
-				# overshooting_vars.append(
-				# 	itf.Overshooting(
-				# 		actions=F.pad(actions[t:d], seq_pad), 
-				# 		nonterminals=F.pad(nonterminals[t:d], seq_pad), 
-				# 		rewards=F.pad(rewards[t:d], seq_pad[2:]), 
-				# 		beliefs=beliefs[t_], 
-				# 		prior_states=prior_states[t_], 
-				# 		posterior_means=F.pad(posterior_means[t_ + 1:d_ + 1].detach(), seq_pad), 
-				# 		posterior_std_devs=F.pad(posterior_std_devs[t_ + 1:d_ + 1].detach(), seq_pad, value=1), 
-				# 		masks=F.pad(torch.ones(d - t, args.batch_size, args.state_size, device=args.device), seq_pad)
-				# 	))  # Posterior standard deviations must be padded with > 0 to prevent infinite KL divergences
-
 				overshooting_vars.append(
 					itf.Overshooting(
 						actions=F.pad(actions[t:d], seq_pad), 
@@ -333,14 +298,6 @@ for episode in tqdm(range(metrics['episodes'][-1] + 1, args.episodes + 1), total
 			overshooting_vars = itf.Overshooting(*zip(*overshooting_vars))
 			# Update belief/state using prior from previous belief/state and previous action (over entire sequence at once)
 			# just added ovsht_ as a prefix
-			# ovsht_beliefs, ovsht_prior_states, ovsht_prior_means, ovsht_prior_std_devs = transition_model.generate(
-			# 	prev_state=torch.cat(overshooting_vars.prior_states, dim=0), 
-			# 	actions=torch.cat(overshooting_vars.actions, dim=1), 
-			# 	prev_belief=torch.cat(overshooting_vars.beliefs, dim=0), 
-			# 	observations=None, 
-			# 	nonterminals=torch.cat(overshooting_vars.nonterminals, dim=1))
-
-
 			ovsht_beliefs, ovsht_prior_states, ovsht_prior = transition_model.generate(
 				prev_state=torch.cat(overshooting_vars.prior_states, dim=0), 
 				actions=torch.cat(overshooting_vars.actions, dim=1), 
@@ -351,9 +308,6 @@ for episode in tqdm(range(metrics['episodes'][-1] + 1, args.episodes + 1), total
 
 			### TODO ###
 			ovsht_posterior = Normal(torch.cat(overshooting_vars.posterior_means, dim=1), torch.cat(overshooting_vars.posterior_std_devs, dim=1))
-			# ovsht_prior = Normal(ovsht_prior_means, ovsht_prior_std_devs)
-
-
 			############
 
 			seq_mask = torch.cat(overshooting_vars.masks, dim=1)

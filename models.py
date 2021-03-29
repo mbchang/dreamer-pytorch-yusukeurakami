@@ -113,7 +113,8 @@ class TransitionModel(jit.ScriptModule):
 
 	@jit.script_method
 	def filter_step(self, prev_state:torch.Tensor, actions:torch.Tensor, prev_belief:torch.Tensor, observations:Optional[torch.Tensor]=None, nonterminals:Optional[torch.Tensor]=None) -> List[torch.Tensor]:
-		return self.forward(prev_state=prev_state, actions=actions, prev_belief=prev_belief, observations=observations, nonterminals=nonterminals)
+		belief, _, _, posterior_state, _ =  self.forward(prev_state=prev_state, actions=actions, prev_belief=prev_belief, observations=observations, nonterminals=nonterminals)
+		return belief, posterior_state
 
 	@jit.script_method
 	def generate(self, prev_state:torch.Tensor, actions:torch.Tensor, prev_belief:torch.Tensor, observations:Optional[torch.Tensor]=None, nonterminals:Optional[torch.Tensor]=None) -> List[torch.Tensor]:
