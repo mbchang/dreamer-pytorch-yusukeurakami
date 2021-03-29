@@ -38,11 +38,6 @@ class TransitionModel(jit.ScriptModule):
 		self.fc_state_posterior = nn.Linear(hidden_size, 2 * state_size)
 		self.modules = [self.fc_embed_state_action, self.fc_embed_belief_prior, self.fc_state_prior, self.fc_embed_belief_posterior, self.fc_state_posterior]
 
-
-	# def initial_step(self, batch_size, args):
-	# 	init_belief, init_state = torch.zeros(batch_size, args.belief_size, device=args.device), torch.zeros(batch_size, args.state_size, device=args.device)
-	# 	return init_belief, init_state
-
 	def initial_step(self, observation, device):
 		batch_size = observation.shape[0]
 		init_belief, init_state = torch.zeros(batch_size, self.belief_size, device=device), torch.zeros(batch_size, self.state_size, device=device)
@@ -66,17 +61,6 @@ class TransitionModel(jit.ScriptModule):
 		Output: beliefs, prior_states, prior_means, prior_std_devs, posterior_states, posterior_means, posterior_std_devs
 						torch.Size([49, 50, 200]) torch.Size([49, 50, 30]) torch.Size([49, 50, 30]) torch.Size([49, 50, 30]) torch.Size([49, 50, 30]) torch.Size([49, 50, 30]) torch.Size([49, 50, 30])
 		'''
-
-		# print('actions', actions.shape)
-		# print('observations', observations.shape)
-		# print('nonterminals', nonterminals.shape)
-
-# ctions torch.Size([19, 8, 6])                              | 0/4 [00:00<?, ?it/s]
-# observations torch.Size([19, 8, 1024])
-# nonterminals torch.Size([19, 8, 1])
-
-		# assert False
-
 		# Create lists for hidden states (cannot use single tensor as buffer because autograd won't work with inplace writes)
 		T = actions.size(0) + 1
 		beliefs, prior_states, prior_means, prior_std_devs, posterior_states, posterior_means, posterior_std_devs = [torch.empty(0)] * T, [torch.empty(0)] * T, [torch.empty(0)] * T, [torch.empty(0)] * T, [torch.empty(0)] * T, [torch.empty(0)] * T, [torch.empty(0)] * T
@@ -85,19 +69,8 @@ class TransitionModel(jit.ScriptModule):
 		for t in range(T - 1):
 			_state = prior_states[t] if observations is None else posterior_states[t]  # Select appropriate previous state
 			_state = _state if nonterminals is None else _state * nonterminals[t]  # Mask if previous transition was terminal
-
 			
-			# # Compute belief (deterministic hidden state)
-			# hidden = self.act_fn(self.fc_embed_state_action(torch.cat([_state, actions[t]], dim=1)))
-			# beliefs[t + 1] = self.rnn(hidden, beliefs[t])
-			# # Compute state prior by applying transition dynamics
-			# hidden = self.act_fn(self.fc_embed_belief_prior(beliefs[t + 1]))
-			# prior_means[t + 1], _prior_std_dev = torch.chunk(self.fc_state_prior(hidden), 2, dim=1)
-			# prior_std_devs[t + 1] = F.softplus(_prior_std_dev) + self.min_std_dev
-			# # prior_states[t + 1] = dt.SphericalMultivariateNormal(mu=prior_means[t + 1], logstd=_prior_std_dev, min_std_dev=self.min_std_dev).rsample() 
-			# # prior_states[t + 1] = prior_means[t + 1] + prior_std_devs[t + 1] * torch.randn_like(prior_means[t + 1])   
-			# prior_states[t + 1] = prior_means[t + 1] + prior_std_devs[t + 1] * torch.randn_like(prior_means[t + 1])
-
+			# Compute belief (deterministic hidden state)
 			beliefs[t+1], hidden, prior_means[t + 1], prior_std_devs[t + 1], prior_states[t + 1] = self.generate_step(belief_t=beliefs[t], state_t=_state, action_t=actions[t])
 
 			if observations is not None:
@@ -106,28 +79,12 @@ class TransitionModel(jit.ScriptModule):
 				hidden = self.act_fn(self.fc_embed_belief_posterior(torch.cat([beliefs[t + 1], observations[t_ + 1]], dim=1)))
 				posterior_means[t + 1], _posterior_std_dev = torch.chunk(self.fc_state_posterior(hidden), 2, dim=1)
 				posterior_std_devs[t + 1] = F.softplus(_posterior_std_dev) + self.min_std_dev
-				# posterior_states[t + 1] = dt.SphericalMultivariateNormal(mu=posterior_means[t + 1], logstd=_posterior_std_dev, min_std_dev=self.min_std_dev).rsample() 
-				# posterior_states
 				posterior_states[t + 1] = posterior_means[t + 1] + posterior_std_devs[t + 1] * torch.randn_like(posterior_means[t + 1])
 
 		# Return new hidden states
 		hidden = [torch.stack(beliefs[1:], dim=0), torch.stack(prior_states[1:], dim=0), torch.stack(prior_means[1:], dim=0), torch.stack(prior_std_devs[1:], dim=0)]
 		if observations is not None:
 			hidden += [torch.stack(posterior_states[1:], dim=0), torch.stack(posterior_means[1:], dim=0), torch.stack(posterior_std_devs[1:], dim=0)]
-
-
-
-
-
-
-
-
-		# print('beliefs', hidden[0].shape)
-		# print('prior_states', hidden[1].shape)
-		# assert False
-
-# eliefs torch.Size([19, 8, 200])                            | 0/4 [00:00<?, ?it/s]
-# prior_states torch.Size([19, 8, 30])
 
 		return hidden
 
@@ -142,8 +99,6 @@ class TransitionModel(jit.ScriptModule):
 		prior_std_devs_tp1 = F.softplus(_prior_std_dev) + self.min_std_dev
 		prior_states_tp1 = prior_means_tp1 + prior_std_devs_tp1 * torch.randn_like(prior_means_tp1)
 		return belief_tp1, hidden, prior_means_tp1, prior_std_devs_tp1, prior_states_tp1
-
-
 
 	@jit.script_method
 	def filter(self, prev_state:torch.Tensor, actions:torch.Tensor, prev_belief:torch.Tensor, observations:Optional[torch.Tensor]=None, nonterminals:Optional[torch.Tensor]=None) -> List[torch.Tensor]:

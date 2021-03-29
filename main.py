@@ -128,8 +128,6 @@ print('Initializing model...')
 ####################################
 
 # transition_model = TransitionModel(args.belief_size, args.state_size, env.action_size, args.hidden_size, args.embedding_size, args.dense_activation_function).to(device=args.device)
-
-
 # --------------
 
 transition_model = lvm.SlotTransitionModel(
@@ -154,12 +152,7 @@ transition_model = lvm.SlotTransitionModel(
 	mode='dynamics',
 	device=args.device
 	)
-
-# assert False
 ####################################
-
-
-
 observation_model = ObservationModel(args.symbolic_env, env.observation_size, args.belief_size, args.state_size, args.embedding_size, args.cnn_activation_function).to(device=args.device)
 reward_model = RewardModel(args.belief_size, args.state_size, args.hidden_size, args.dense_activation_function).to(device=args.device)
 
@@ -168,10 +161,6 @@ reward_model = RewardModel(args.belief_size, args.state_size, args.hidden_size, 
 # --------------
 encoder = lvm.IdentityEncoder()
 ####################################
-
-
-# print(encoder)
-# assert False
 
 actor_model = ActorModel(args.belief_size, args.state_size, args.hidden_size, env.action_size, args.dense_activation_function).to(device=args.device)
 value_model = ValueModel(args.belief_size, args.state_size, args.hidden_size, args.dense_activation_function).to(device=args.device)
@@ -201,33 +190,11 @@ free_nats = torch.full((1, ), args.free_nats, device=args.device)  # Allowed dev
 
 def update_belief_and_act(args, env, planner, transition_model, encoder, belief, posterior_state, action, observation, explore=False):
 	# Infer belief over current state q(s_t|o≤t,a<t) from the history
-	# print("action size: ",action.size()) torch.Size([1, 6])
-
-
-	# print('posterior_state', posterior_state.shape)
-	# print('action', action.unsqueeze(dim=0).shape)
-	# print('belief', belief.shape)
-	# print('observation', encoder(observation).unsqueeze(dim=0).shape)
-	# assert False
-
 	belief, _, _, _, posterior_state, _, _ = transition_model.filter_step(
 		prev_state=posterior_state, 
 		actions=action.unsqueeze(dim=0), 
 		prev_belief=belief, 
 		observations=encoder(observation).unsqueeze(dim=0))  # Action and observation need extra time dimension
-
-
-
-	### TODO ###
-
-
-	############
-
-
-
-
-
-
 	belief, posterior_state = belief.squeeze(dim=0), posterior_state.squeeze(dim=0)  # Remove time dimension from belief/state
 	if args.algo=="dreamer":
 		action = planner.get_action(belief, posterior_state, det=not(explore))
@@ -250,14 +217,8 @@ if args.test:
 		total_reward = 0
 		for _ in tqdm(range(args.test_episodes)):
 			observation = env.reset()
-
-			# print('update_belief_and_act')
-			# print(observation.shape)
-
 			belief, posterior_state = transition_model.initial_step(observation=observation, device=args.device)
 			action = torch.zeros(1, env.action_size, device=args.device)
-
-
 			pbar = tqdm(range(args.max_episode_length // args.action_repeat))
 			for t in pbar:
 				belief, posterior_state, action, observation, reward, done = update_belief_and_act(args, env, planner, transition_model, encoder, belief, posterior_state, action, observation.to(device=args.device))
@@ -283,11 +244,6 @@ for episode in tqdm(range(metrics['episodes'][-1] + 1, args.episodes + 1), total
 		# Draw sequence chunks {(o_t, a_t, r_t+1, terminal_t+1)} ~ D uniformly at random from the dataset (including terminal flags)
 		observations, actions, rewards, nonterminals = D.sample(args.batch_size, args.chunk_size) # Transitions start at time t = 0
 
-		# print('filter')
-		# print(observations[0].shape)  # orch.Size([8, 3, 64, 64])
-		# assert False
-
-
 		# Create initial belief and state for time t = 0
 		init_belief, init_state = transition_model.initial_step(observation=observations[0], device=args.device)
 
@@ -303,14 +259,7 @@ for episode in tqdm(range(metrics['episodes'][-1] + 1, args.episodes + 1), total
 		posterior = Normal(posterior_means, posterior_std_devs)
 		prior = Normal(prior_means, prior_std_devs)
 
-
 		############
-
-
-
-
-
-
 
 		# Calculate observation likelihood, reward likelihood and KL losses (for t = 0 only for latent overshooting); sum over final dims, average over batch and time (original implementation, though paper seems to miss 1/T scaling?)
 		if args.worldmodel_LogProbLoss:
@@ -456,25 +405,11 @@ for episode in tqdm(range(metrics['episodes'][-1] + 1, args.episodes + 1), total
 	with torch.no_grad():
 		observation, total_reward = env.reset(), 0
 
-
-
-		# belief, posterior_state, action = torch.zeros(1, args.belief_size, device=args.device), torch.zeros(1, args.state_size, device=args.device), torch.zeros(1, env.action_size, device=args.device)
-
-		# belief, posterior_state = transition_model.initial_step(batch_size=1, args=args)
 		belief, posterior_state = transition_model.initial_step(observation=observation, device=args.device)
 		action = torch.zeros(1, env.action_size, device=args.device)
 
-
 		pbar = tqdm(range(args.max_episode_length // args.action_repeat))
 		for t in pbar:
-			# print("step",t)
-
-
-
-
-			# print('update_belief_and_act')
-			# print(observation.shape)
-
 			belief, posterior_state, action, next_observation, reward, done = update_belief_and_act(args, env, planner, transition_model, encoder, belief, posterior_state, action, observation.to(device=args.device), explore=True)
 			D.append(observation, action.cpu(), reward, done)
 			total_reward += reward
