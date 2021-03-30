@@ -159,7 +159,15 @@ else:
 
 
 ####################################
-observation_model = ObservationModel(args.symbolic_env, env.observation_size, args.belief_size, args.state_size, args.embedding_size, args.cnn_activation_function).to(device=args.device)
+if args.slots:
+	observation_model = ssa.ObservationModel(indim=args.belief_size//5+args.state_size//5, num_slots=5, scale=0.1)
+
+	# print(observation_model.modules)
+else:
+	observation_model = ObservationModel(args.symbolic_env, env.observation_size, args.belief_size, args.state_size, args.embedding_size, args.cnn_activation_function).to(device=args.device)
+
+
+
 reward_model = RewardModel(args.belief_size, args.state_size, args.hidden_size, args.dense_activation_function).to(device=args.device)
 
 ####################################
@@ -271,12 +279,13 @@ for episode in tqdm(range(metrics['episodes'][-1] + 1, args.episodes + 1), total
 			observation_loss = -observation_dist.log_prob(observations[1:]).sum(dim=2 if args.symbolic_env else (2, 3, 4)).mean(dim=(0, 1))
 		else: 
 			observation_loss = F.mse_loss(bottle(observation_model, (beliefs, posterior_states)), observations[1:], reduction='none').sum(dim=2 if args.symbolic_env else (2, 3, 4)).mean(dim=(0, 1))
+
 		if args.worldmodel_LogProbLoss:
 			reward_dist = Normal(bottle(reward_model, (beliefs, posterior_states)),1)
 			reward_loss = -reward_dist.log_prob(rewards[:-1]).mean(dim=(0, 1))
 		else:
 			reward_loss = F.mse_loss(bottle(reward_model, (beliefs, posterior_states)), rewards[:-1], reduction='none').mean(dim=(0,1))
-			
+
 		# transition loss
 		div = kl_divergence(posterior, prior).sum(dim=2)
 		kl_loss = torch.max(div, free_nats).mean(dim=(0, 1))  # Note that normalisation by overshooting distance and weighting by overshooting distance cancel out
