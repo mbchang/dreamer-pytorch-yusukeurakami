@@ -56,20 +56,20 @@ DREAMER
 training loop
 Data collection
 Test model
-episodes: 6, total_steps: 5499, train_reward: 92.6387143633446 
+episodes: 6, total_steps: 5499, train_reward: 47.027915738109236 
 training loop
 Data collection
 Test model
-episodes: 7, total_steps: 5998, train_reward: 53.38559565527058 
+episodes: 7, total_steps: 5998, train_reward: 82.0643948182166 
 training loop
 Data collection
 Test model
-episodes: 8, total_steps: 6497, train_reward: 98.87264084557674 
+episodes: 8, total_steps: 6497, train_reward: 87.00917433634088 
 training loop
 Data collection
 Test model
-episodes: 9, total_steps: 6996, train_reward: 88.22923987749039 
+episodes: 9, total_steps: 6996, train_reward: 58.45209983724949 
 training loop
 Data collection
 Test model
-episodes: 10, total_steps: 7495, train_reward: 85.92054241066307 
+episodes: 10, total_steps: 7495, train_reward: 35.93091795269164 

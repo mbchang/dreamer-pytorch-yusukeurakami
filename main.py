@@ -152,7 +152,7 @@ if args.slots:
 			),
 		mode='dynamics',
 		device=args.device
-		)
+		).to(device=args.device)
 else:
 	transition_model = TransitionModel(args.belief_size, args.state_size, env.action_size, args.hidden_size, args.embedding_size, args.dense_activation_function).to(device=args.device)
 # --------------
@@ -160,7 +160,7 @@ else:
 
 ####################################
 if args.slots:
-	observation_model = ssa.ObservationModel(indim=args.belief_size//5+args.state_size//5, num_slots=5, scale=0.1)
+	observation_model = ssa.ObservationModel(indim=args.belief_size//5+args.state_size//5, num_slots=5, scale=0.1).to(device=args.device)
 
 	# print(observation_model.modules)
 else:
@@ -172,7 +172,7 @@ reward_model = RewardModel(args.belief_size, args.state_size, args.hidden_size, 
 
 ####################################
 if args.slots:
-	encoder = lvm.IdentityEncoder()
+	encoder = lvm.IdentityEncoder().to(device=args.device)
 else:
 	encoder = Encoder(args.symbolic_env, env.observation_size, args.embedding_size, args.cnn_activation_function).to(device=args.device)
 # --------------
@@ -415,7 +415,7 @@ for episode in tqdm(range(metrics['episodes'][-1] + 1, args.episodes + 1), total
 	with torch.no_grad():
 		observation, total_reward = env.reset(), 0
 
-		belief, posterior_state = transition_model.initial_step(observation=observation, device=args.device)
+		belief, posterior_state = transition_model.initial_step(observation=observation.to(device=args.device), device=args.device)
 		action = torch.zeros(1, env.action_size, device=args.device)
 
 		pbar = tqdm(range(args.max_episode_length // args.action_repeat))
