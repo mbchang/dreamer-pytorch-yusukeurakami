@@ -226,7 +226,7 @@ class ActorModel(jit.ScriptModule):
 
 	@jit.script_method
 	def forward(self, belief, state):
-		raw_init_std = torch.log(torch.exp(self._init_std) - 1)
+		raw_init_std = torch.log(torch.exp(self._init_std) - 1).to(state.device)
 		x = torch.cat([belief, state],dim=1)
 		hidden = self.act_fn(self.fc1(x))
 		hidden = self.act_fn(self.fc2(hidden))
