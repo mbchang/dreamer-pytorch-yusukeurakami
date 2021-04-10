@@ -140,6 +140,69 @@ class GymEnv():
 		return torch.from_numpy(self._env.action_space.sample())
 
 
+class SimpleEntityEnv():
+	def __init__(self, env, symbolic, seed, max_episode_length, action_repeat, bit_depth):
+		from multiagent.environment import MultiAgentEnv
+		import multiagent.scenarios as scenarios
+
+		# load scenario from script
+		scenario = scenarios.load(scenario_name + ".py").Scenario()
+		# create world
+		world = scenario.make_world()
+		# create multiagent environment
+		self._env = MultiAgentEnv(world, scenario.reset_world, scenario.reward, scenario.observation)
+		
+		self.symbolic = symbolic
+		self.max_episode_length = max_episode_length
+		self.action_repeat = action_repeat
+		self.bit_depth = bit_depth
+
+	def reset(self):
+		self.t = 0
+		state = self._env.reset()
+		if self.symbolic:
+			return torch.tensor(state, dtype=torch.float32).unsqueeze(dim=0)
+		else:
+			return _images_to_observation(self._env.render(mode='rgb_array'), self.bit_depth)
+
+	def step(self, action):
+		action = action.detach().numpy()
+		reward = 0
+		for k in range(self.action_repeat):
+			state, reward_k, done, _ = self._env.step(action)
+			reward += reward_k
+			self.t += 1  # Increment internal timer
+			done = done or self.t == self.max_episode_length
+			if done:
+				break
+		if self.symbolic:
+			observation = torch.tensor(state, dtype=torch.float32).unsqueeze(dim=0)
+		else:
+			observation = _images_to_observation(self._env.render(mode='rgb_array'), self.bit_depth)
+		return observation, reward, done
+
+	def render(self):
+		self._env.render()
+
+	def close(self):
+		pass
+
+	@property
+	def observation_size(self):
+		return self._env.observation_space[0].shape[0] if self.symbolic else (3, 64, 64)
+
+	@property
+	def action_size(self):
+		return self._env.action_size[0].n
+
+	# Sample an action randomly from a uniform distribution over all valid actions
+	def sample_random_action(self):
+		action_n = [np.concatenate([
+			np.random.binomial(n=1, p=0.5, size=(1,)),
+			np.random.beta(a=1, b=1, size=(4,))]) for i in range(self._env.n)]
+		return action_n
+
+
 def Env(env, symbolic, seed, max_episode_length, action_repeat, bit_depth):
 	if env in GYM_ENVS:
 		return GymEnv(env, symbolic, seed, max_episode_length, action_repeat, bit_depth)
