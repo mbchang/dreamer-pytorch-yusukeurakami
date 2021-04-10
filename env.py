@@ -21,6 +21,11 @@ def postprocess_observation(observation, bit_depth):
 
 
 def _images_to_observation(images, bit_depth):
+
+	# print(len(images))
+	# print(images[0].shape)
+	# assert False
+
 	images = torch.tensor(cv2.resize(images, (64, 64), interpolation=cv2.INTER_LINEAR).transpose(2, 0, 1), dtype=torch.float32)  # Resize and put channel first
 	preprocess_observation_(images, bit_depth)  # Quantise, centre and dequantise inplace
 	return images.unsqueeze(dim=0)  # Add batch dimension
@@ -147,7 +152,7 @@ class SimpleEntityEnv():
 		import multiagent.scenarios as scenarios
 
 		# load scenario from script
-		scenario = scenarios.load(scenario_name + ".py").Scenario()
+		scenario = scenarios.load(env + ".py").Scenario()
 		# create world
 		world = scenario.make_world()
 		# create multiagent environment
@@ -164,22 +169,22 @@ class SimpleEntityEnv():
 		if self.symbolic:
 			return torch.tensor(state, dtype=torch.float32).unsqueeze(dim=0)
 		else:
-			return _images_to_observation(self._env.render(mode='rgb_array'), self.bit_depth)
+			return _images_to_observation(self._env.render(mode='rgb_array')[0], self.bit_depth)
 
 	def step(self, action):
 		action = action.detach().numpy()
 		reward = 0
 		for k in range(self.action_repeat):
-			state, reward_k, done, _ = self._env.step(action)
-			reward += reward_k
+			state, reward_k, done, _ = self._env.step([action])
+			reward += reward_k[0]
 			self.t += 1  # Increment internal timer
-			done = done or self.t == self.max_episode_length
+			done = done[0] or self.t == self.max_episode_length
 			if done:
 				break
 		if self.symbolic:
 			observation = torch.tensor(state, dtype=torch.float32).unsqueeze(dim=0)
 		else:
-			observation = _images_to_observation(self._env.render(mode='rgb_array'), self.bit_depth)
+			observation = _images_to_observation(self._env.render(mode='rgb_array')[0], self.bit_depth)
 		return observation, reward, done
 
 	def render(self):
@@ -194,13 +199,13 @@ class SimpleEntityEnv():
 
 	@property
 	def action_size(self):
-		return self._env.action_size[0].n
+		return self._env.action_space[0].n
 
 	# Sample an action randomly from a uniform distribution over all valid actions
 	def sample_random_action(self):
-		action_n = [np.concatenate([
+		action_n = torch.Tensor(np.concatenate([
 			np.random.binomial(n=1, p=0.5, size=(1,)),
-			np.random.beta(a=1, b=1, size=(4,))]) for i in range(self._env.n)]
+			np.random.beta(a=1, b=1, size=(4,))]))
 		return action_n
 
 
