@@ -6,3 +6,7 @@ env PYTORCH_JIT=0 python main.py --algo dreamer --env walker-walk --action-repea
 
 # slots GPU (batch size 10)
 CUDA_VISIBLE_DEVICES=5 DISPLAY=:0 python main.py --algo dreamer --env walker-walk --action-repeat 2 --slots --id slots0 --batch-size 10
+
+
+# entity
+env PYTORCH_JIT=0 python entity_main.py --algo dreamer --env simple --action-repeat 2
