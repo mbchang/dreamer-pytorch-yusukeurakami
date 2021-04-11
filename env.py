@@ -6,7 +6,7 @@ import torch
 GYM_ENVS = ['Pendulum-v0', 'MountainCarContinuous-v0', 'Ant-v2', 'HalfCheetah-v2', 'Hopper-v2', 'Humanoid-v2', 'HumanoidStandup-v2', 'InvertedDoublePendulum-v2', 'InvertedPendulum-v2', 'Reacher-v2', 'Swimmer-v2', 'Walker2d-v2']
 CONTROL_SUITE_ENVS = ['cartpole-balance', 'cartpole-swingup', 'reacher-easy', 'finger-spin', 'cheetah-run', 'ball_in_cup-catch', 'walker-walk','reacher-hard', 'walker-run', 'humanoid-stand', 'humanoid-walk', 'fish-swim', 'acrobot-swingup']
 CONTROL_SUITE_ACTION_REPEATS = {'cartpole': 8, 'reacher': 4, 'finger': 2, 'cheetah': 4, 'ball_in_cup': 6, 'walker': 2, 'humanoid': 2, 'fish': 2, 'acrobot':4}
-SIMPLE_ENTITY_ENVS = ['simple', 'simple_gravity']
+SIMPLE_ENTITY_ENVS = ['simple', 'simple_gravity', 'simple_white']
 
 
 # Preprocesses an observation inplace (from float32 Tensor [0, 255] to [-0.5, 0.5])
@@ -156,7 +156,7 @@ class SimpleEntityEnv():
 		# create world
 		world = scenario.make_world()
 		# create multiagent environment
-		self._env = MultiAgentEnv(world, scenario.reset_world, scenario.reward, scenario.observation)
+		self._env = MultiAgentEnv(world, scenario.reset_world, scenario.reward, scenario.observation, shared_viewer=True)
 		
 		self.symbolic = symbolic
 		self.max_episode_length = max_episode_length
@@ -205,7 +205,7 @@ class SimpleEntityEnv():
 	def sample_random_action(self):
 		action_n = torch.Tensor(np.concatenate([
 			np.random.binomial(n=1, p=0.5, size=(1,)),
-			np.random.beta(a=1, b=1, size=(4,))]))
+			np.random.beta(a=1, b=1, size=(4,))*0.1]))
 		return action_n
 
 
