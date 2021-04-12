@@ -148,7 +148,8 @@ class GymEnv():
 
 class SimpleEntityEnv():
 	def __init__(self, env, symbolic, seed, max_episode_length, action_repeat, bit_depth):
-		from multiagent.environment import MultiAgentEnv
+		# from multiagent.environment import MultiAgentEnv
+		from multiagent.pygame_environment import PGMultiAgentEnv
 		import multiagent.scenarios as scenarios
 
 		# load scenario from script
@@ -156,8 +157,9 @@ class SimpleEntityEnv():
 		# create world
 		world = scenario.make_world()
 		# create multiagent environment
-		self._env = MultiAgentEnv(world, scenario.reset_world, scenario.reward, scenario.observation, shared_viewer=True)
-		
+
+		self._env = PGMultiAgentEnv(world, scenario.reset_world, scenario.reward, scenario.observation, shared_viewer=True)
+
 		self.symbolic = symbolic
 		self.max_episode_length = max_episode_length
 		self.action_repeat = action_repeat
@@ -191,7 +193,7 @@ class SimpleEntityEnv():
 		self._env.render()
 
 	def close(self):
-		pass
+		self._env.close()
 
 	@property
 	def observation_size(self):

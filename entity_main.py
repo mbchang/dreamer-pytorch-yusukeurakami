@@ -93,11 +93,33 @@ if torch.cuda.is_available() and not args.disable_cuda:
     args.device = torch.device('cuda')
     torch.cuda.manual_seed(args.seed)
     os.environ['MUJOCO_GL'] = 'egl'
+
+
+    # if 'vdisplay' not in globals():
+    #     # start a virtual X display for MAGICAL rendering
+    #     import xvfbwrapper
+    #     vdisplay = xvfbwrapper.Xvfb()
+    #     vdisplay.start()
+
+    # # print(os.environ)
+
+
 else:
     print("using CPU")
     args.device = torch.device('cpu')
+
+
+
+os.environ["SDL_VIDEODRIVER"] = "dummy"
+
+    
 metrics = {'steps': [], 'episodes': [], 'train_rewards': [], 'test_episodes': [], 'test_rewards': [], 
                      'observation_loss': [], 'reward_loss': [], 'kl_loss': [], 'actor_loss': [], 'value_loss': []}
+
+# import pprint
+# pprint.pprint(os.environ.keys())
+# assert False
+
 
 summary_name = results_dir + "/{}_{}_log"
 writer = SummaryWriter(summary_name.format(args.env, args.id))
@@ -123,6 +145,8 @@ elif not args.test:
         metrics['steps'].append(t * args.action_repeat + (0 if len(metrics['steps']) == 0 else metrics['steps'][-1]))
         metrics['episodes'].append(s)
 
+# close rendering window
+env.close()
 
 # Initialise model parameters randomly
 print('Initializing model...')
@@ -253,6 +277,12 @@ if args.test:
 
 # Training (and testing)
 for episode in tqdm(range(metrics['episodes'][-1] + 1, args.episodes + 1), total=args.episodes, initial=metrics['episodes'][-1] + 1):
+
+
+
+
+
+
     # Model fitting
     losses = []
     model_modules = transition_model.modules+encoder.modules+observation_model.modules+reward_model.modules
@@ -437,9 +467,12 @@ for episode in tqdm(range(metrics['episodes'][-1] + 1, args.episodes + 1), total
         lineplot(metrics['episodes'][-len(metrics['train_rewards']):], metrics['train_rewards'], 'train_rewards', results_dir)
 
 
+
+
+
     # Test model
-    print("Test model")
     if episode % args.test_interval == 0:
+        print("Test model")
         # Set models to eval mode
         transition_model.eval()
         observation_model.eval()
