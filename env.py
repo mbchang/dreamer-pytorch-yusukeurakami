@@ -213,6 +213,8 @@ class SimpleEntityEnv():
 			# return self._env.render(mode='rgb_array')[0]
 
 	def step(self, action):
+		action = self._scale_action(action)
+
 		action = action.detach().numpy()
 		reward = 0
 		for k in range(self.action_repeat):
@@ -252,8 +254,12 @@ class SimpleEntityEnv():
 	def sample_random_action(self):
 		action_n = torch.Tensor(np.concatenate([
 			np.random.binomial(n=1, p=0.5, size=(1,)),
-			np.random.beta(a=1, b=1, size=(4,))*0.1]))
+			np.random.beta(a=1, b=1, size=(4,))]))
 		return action_n
+
+	def _scale_action(self, action):
+		action[1:] *= 0.1
+		return action
 
 
 def Env(env, symbolic, seed, max_episode_length, action_repeat, bit_depth):
