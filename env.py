@@ -30,6 +30,18 @@ def _images_to_observation(images, bit_depth):
 	preprocess_observation_(images, bit_depth)  # Quantise, centre and dequantise inplace
 	return images.unsqueeze(dim=0)  # Add batch dimension
 
+def _pygame_images_to_observation(images, bit_depth):
+
+	# print(len(images))
+	# print(images[0].shape)
+	# assert False
+
+	images = torch.tensor(cv2.resize(images, (64, 64), interpolation=cv2.INTER_LINEAR).transpose(2, 0, 1), dtype=torch.float32)  # Resize and put channel first
+	images = images - 0.5  # centre
+	# preprocess_observation_(images, bit_depth)  # Quantise, centre and dequantise inplace
+	return images.unsqueeze(dim=0)  # Add batch dimension
+
+
 
 class ControlSuiteEnv():
 	def __init__(self, env, symbolic, seed, max_episode_length, action_repeat, bit_depth):
@@ -165,13 +177,40 @@ class SimpleEntityEnv():
 		self.action_repeat = action_repeat
 		self.bit_depth = bit_depth
 
+	# def reset(self):
+	# 	self.t = 0
+	# 	state = self._env.reset()
+	# 	if self.symbolic:
+	# 		return torch.tensor(state, dtype=torch.float32).unsqueeze(dim=0)
+	# 	else:
+	# 		return _images_to_observation(self._env.render(mode='rgb_array')[0], self.bit_depth)
+
+	# def step(self, action):
+	# 	action = action.detach().numpy()
+	# 	reward = 0
+	# 	for k in range(self.action_repeat):
+	# 		state, reward_k, done, _ = self._env.step([action])
+	# 		reward += reward_k[0]
+	# 		self.t += 1  # Increment internal timer
+	# 		done = done[0] or self.t == self.max_episode_length
+	# 		if done:
+	# 			break
+	# 	if self.symbolic:
+	# 		observation = torch.tensor(state, dtype=torch.float32).unsqueeze(dim=0)
+	# 	else:
+	# 		observation = _images_to_observation(self._env.render(mode='rgb_array')[0], self.bit_depth)
+	# 	return observation, reward, done
+
+
 	def reset(self):
 		self.t = 0
 		state = self._env.reset()
 		if self.symbolic:
 			return torch.tensor(state, dtype=torch.float32).unsqueeze(dim=0)
 		else:
-			return _images_to_observation(self._env.render(mode='rgb_array')[0], self.bit_depth)
+			# return _images_to_observation(self._env.render(mode='rgb_array')[0], self.bit_depth)
+			return _pygame_images_to_observation(self._env.render(mode='rgb_array')[0], self.bit_depth)
+			# return self._env.render(mode='rgb_array')[0]
 
 	def step(self, action):
 		action = action.detach().numpy()
@@ -186,8 +225,14 @@ class SimpleEntityEnv():
 		if self.symbolic:
 			observation = torch.tensor(state, dtype=torch.float32).unsqueeze(dim=0)
 		else:
-			observation = _images_to_observation(self._env.render(mode='rgb_array')[0], self.bit_depth)
+			# observation = _images_to_observation(self._env.render(mode='rgb_array')[0], self.bit_depth)
+			# observation = self._env.render(mode='rgb_array')[0]
+			observation = _pygame_images_to_observation(self._env.render(mode='rgb_array')[0], self.bit_depth)
+			# print(observation.max())
+			# print(observation.shape)
+			# assert False
 		return observation, reward, done
+
 
 	def render(self):
 		self._env.render()
