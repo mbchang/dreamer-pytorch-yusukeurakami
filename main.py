@@ -8,7 +8,7 @@ from torch.distributions.kl import kl_divergence
 from torch.nn import functional as F
 from torchvision.utils import make_grid, save_image
 from tqdm import tqdm
-from env import CONTROL_SUITE_ENVS, Env, GYM_ENVS, EnvBatcher
+from env import CONTROL_SUITE_ENVS, Env, GYM_ENVS, EnvBatcher, SIMPLE_ENTITY_ENVS
 from memory import ExperienceReplay
 from models import bottle, Encoder, ObservationModel, RewardModel, TransitionModel, ValueModel, ActorModel
 from planner import MPCPlanner
@@ -27,7 +27,7 @@ parser.add_argument('--algo', type=str, default='dreamer', help='planet or dream
 parser.add_argument('--id', type=str, default='default', help='Experiment ID')
 parser.add_argument('--seed', type=int, default=1, metavar='S', help='Random seed')
 parser.add_argument('--disable-cuda', action='store_true', help='Disable CUDA')
-parser.add_argument('--env', type=str, default='Pendulum-v0', choices=GYM_ENVS + CONTROL_SUITE_ENVS, help='Gym/Control Suite environment')
+parser.add_argument('--env', type=str, default='Pendulum-v0', choices=GYM_ENVS + CONTROL_SUITE_ENVS + SIMPLE_ENTITY_ENVS, help='Gym/Control Suite environment')
 parser.add_argument('--symbolic-env', action='store_true', help='Symbolic features')
 parser.add_argument('--max-episode-length', type=int, default=1000, metavar='T', help='Max episode length')
 parser.add_argument('--experience-size', type=int, default=1000000, metavar='D', help='Experience replay size')  # Original implementation has an unlimited buffer size, but 1 million is the max experience collected anyway
@@ -93,9 +93,21 @@ if torch.cuda.is_available() and not args.disable_cuda:
 	args.device = torch.device('cuda')
 	torch.cuda.manual_seed(args.seed)
 	os.environ['MUJOCO_GL'] = 'egl'
+
+
+	# if 'vdisplay' not in globals():
+	#     # start a virtual X display for MAGICAL rendering
+	#     import xvfbwrapper
+	#     vdisplay = xvfbwrapper.Xvfb()
+	#     vdisplay.start()
+
+	# # print(os.environ)
+
+
 else:
 	print("using CPU")
 	args.device = torch.device('cpu')
+os.environ["SDL_VIDEODRIVER"] = "dummy"
 metrics = {'steps': [], 'episodes': [], 'train_rewards': [], 'test_episodes': [], 'test_rewards': [], 
 					 'observation_loss': [], 'reward_loss': [], 'kl_loss': [], 'actor_loss': [], 'value_loss': []}
 
@@ -123,8 +135,8 @@ elif not args.test:
 		metrics['steps'].append(t * args.action_repeat + (0 if len(metrics['steps']) == 0 else metrics['steps'][-1]))
 		metrics['episodes'].append(s)
 
-# # close rendering window
-# env.close()
+# close rendering window
+env.close()
 
 # Initialise model parameters randomly
 print('Initializing model...')
@@ -511,7 +523,6 @@ for episode in tqdm(range(metrics['episodes'][-1] + 1, args.episodes + 1), total
 		if args.checkpoint_experience:
 			torch.save(D, os.path.join(results_dir, 'experience.pth'))  # Warning: will fail with MemoryError with large memory sizes
 
-print('lalala')
 
 # Close training environment
 env.close()
