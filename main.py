@@ -123,6 +123,8 @@ elif not args.test:
 		metrics['steps'].append(t * args.action_repeat + (0 if len(metrics['steps']) == 0 else metrics['steps'][-1]))
 		metrics['episodes'].append(s)
 
+# # close rendering window
+# env.close()
 
 # Initialise model parameters randomly
 print('Initializing model...')
@@ -438,8 +440,8 @@ for episode in tqdm(range(metrics['episodes'][-1] + 1, args.episodes + 1), total
 
 
 	# Test model
-	print("Test model")
 	if episode % args.test_interval == 0:
+		print("Test model")
 		# Set models to eval mode
 		transition_model.eval()
 		observation_model.eval()
@@ -509,6 +511,7 @@ for episode in tqdm(range(metrics['episodes'][-1] + 1, args.episodes + 1), total
 		if args.checkpoint_experience:
 			torch.save(D, os.path.join(results_dir, 'experience.pth'))  # Warning: will fail with MemoryError with large memory sizes
 
+print('lalala')
 
 # Close training environment
 env.close()
