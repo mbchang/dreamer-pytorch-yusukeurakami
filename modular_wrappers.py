@@ -31,36 +31,29 @@ class MonolithicModelWrapper(nn.Module):
 
     def main(self, observations, actions, rewards, nonterminals, free_nats, global_prior, param_list):
 
-        encoder = self.encoder
-        transition_model = self.transition
-        observation_model = self.observation
-        reward_model = self.reward
-        model_optimizer = self.optimizer
-
-
         # Create initial belief and state for time t = 0
-        init_belief, init_state = transition_model.initial_step(observation=observations[0], device=self.args.device)
+        init_belief, init_state = self.transition.initial_step(observation=observations[0], device=self.args.device)
 
         # Update belief/state using posterior from previous belief/state, previous action and current observation (over entire sequence at once)
-        beliefs, prior_states, prior, posterior_states, posterior = transition_model.filter(
+        beliefs, prior_states, prior, posterior_states, posterior = self.transition.filter(
                 prev_state=init_state, 
                 actions=actions[:-1], 
                 prev_belief=init_belief, 
-                observations=bottle(encoder, (observations[1:], )), 
+                observations=bottle(self.encoder, (observations[1:], )), 
                 nonterminals=nonterminals[:-1])
 
         # Calculate observation likelihood, reward likelihood and KL losses (for t = 0 only for latent overshooting); sum over final dims, average over batch and time (original implementation, though paper seems to miss 1/T scaling?)
         if self.args.worldmodel_LogProbLoss:
-            observation_dist = Normal(bottle(observation_model, (beliefs, posterior_states)), 1)
+            observation_dist = Normal(bottle(self.observation, (beliefs, posterior_states)), 1)
             observation_loss = -observation_dist.log_prob(observations[1:]).sum(dim=2 if self.args.symbolic_env else (2, 3, 4)).mean(dim=(0, 1))
         else: 
-            observation_loss = F.mse_loss(bottle(observation_model, (beliefs, posterior_states)), observations[1:], reduction='none').sum(dim=2 if self.args.symbolic_env else (2, 3, 4)).mean(dim=(0, 1))
+            observation_loss = F.mse_loss(bottle(self.observation, (beliefs, posterior_states)), observations[1:], reduction='none').sum(dim=2 if self.args.symbolic_env else (2, 3, 4)).mean(dim=(0, 1))
 
         if self.args.worldmodel_LogProbLoss:
-            reward_dist = Normal(bottle(reward_model, (beliefs, posterior_states)),1)
+            reward_dist = Normal(bottle(self.reward, (beliefs, posterior_states)),1)
             reward_loss = -reward_dist.log_prob(rewards[:-1]).mean(dim=(0, 1))
         else:
-            reward_loss = F.mse_loss(bottle(reward_model, (beliefs, posterior_states)), rewards[:-1], reduction='none').mean(dim=(0,1))
+            reward_loss = F.mse_loss(bottle(self.reward, (beliefs, posterior_states)), rewards[:-1], reduction='none').mean(dim=(0,1))
 
         # transition loss
         div = kl_divergence(posterior, prior).sum(dim=2)
@@ -92,7 +85,7 @@ class MonolithicModelWrapper(nn.Module):
             overshooting_vars = itf.Overshooting(*zip(*overshooting_vars))
             # Update belief/state using prior from previous belief/state and previous action (over entire sequence at once)
             # just added ovsht_ as a prefix
-            ovsht_beliefs, ovsht_prior_states, ovsht_prior = transition_model.generate(
+            ovsht_beliefs, ovsht_prior_states, ovsht_prior = self.transition.generate(
                 prev_state=torch.cat(overshooting_vars.prior_states, dim=0), 
                 actions=torch.cat(overshooting_vars.actions, dim=1), 
                 prev_belief=torch.cat(overshooting_vars.beliefs, dim=0), 
@@ -110,18 +103,15 @@ class MonolithicModelWrapper(nn.Module):
 
             # Calculate overshooting reward prediction loss with sequence mask
             if self.args.overshooting_reward_scale != 0: 
-                reward_loss += (1 / self.args.overshooting_distance) * self.args.overshooting_reward_scale * F.mse_loss(bottle(reward_model, (ovsht_beliefs, ovsht_prior_states)) * seq_mask[:, :, 0], torch.cat(overshooting_vars.rewards, dim=1), reduction='none').mean(dim=(0, 1)) * (self.args.chunk_size - 1)  # Update reward loss (compensating for extra average over each overshooting/open loop sequence) 
+                reward_loss += (1 / self.args.overshooting_distance) * self.args.overshooting_reward_scale * F.mse_loss(bottle(self.reward, (ovsht_beliefs, ovsht_prior_states)) * seq_mask[:, :, 0], torch.cat(overshooting_vars.rewards, dim=1), reduction='none').mean(dim=(0, 1)) * (self.args.chunk_size - 1)  # Update reward loss (compensating for extra average over each overshooting/open loop sequence) 
 
         # Apply linearly ramping learning rate schedule
         if self.args.learning_rate_schedule != 0:
-            for group in model_optimizer.param_groups:
+            for group in self.optimizer.param_groups:
                 group['lr'] = min(group['lr'] + self.args.model_learning_rate / self.args.learning_rate_schedule, self.args.model_learning_rate)
         model_loss = observation_loss + reward_loss + kl_loss
-        # Update model parameters
-        model_optimizer.zero_grad()
-        model_loss.backward()
-        nn.utils.clip_grad_norm_(param_list, self.args.grad_clip_norm, norm_type=2)
-        model_optimizer.step()
+
+        self.update(model_loss, param_list)
 
         return beliefs, posterior_states, observation_loss, reward_loss, kl_loss
 
@@ -131,15 +121,18 @@ class MonolithicModelWrapper(nn.Module):
     def compute_feedback(self):
         pass
 
-    def update(self):
-        pass
+    def update(self, model_loss, param_list):
+        # Update model parameters
+        self.optimizer.zero_grad()
+        model_loss.backward()
+        nn.utils.clip_grad_norm_(param_list, self.args.grad_clip_norm, norm_type=2)
+        self.optimizer.step()
 
 # class MonolithicActorWrapper(nn.Module):
 #     pass
 
 # class MonolithicValueWrapper(nn.Module):
 #     pass
-
 
 
 class MonolithicPolicyWrapper(nn.Module):
@@ -166,7 +159,8 @@ class MonolithicPolicyWrapper(nn.Module):
             imged_reward = bottle(reward_model, (imged_beliefs, imged_prior_states))
             value_pred = bottle(self.critic, (imged_beliefs, imged_prior_states))
         returns = lambda_return(imged_reward, value_pred, bootstrap=value_pred[-1], discount=self.args.discount, lambda_=self.args.disclam)
-        return returns
+        actor_loss = -torch.mean(returns)
+        return returns, actor_loss
 
     def compute_feedback_critic(self, imged_beliefs, imged_prior_states, returns):
         #Dreamer implementation: value loss calculation and optimization
@@ -175,33 +169,32 @@ class MonolithicPolicyWrapper(nn.Module):
             value_prior_states = imged_prior_states.detach()
             target_return = returns.detach()
         value_dist = Normal(bottle(self.critic, (value_beliefs, value_prior_states)),1) # detach the input tensor from the transition network.
-        return value_dist, target_return
+        value_loss = -value_dist.log_prob(target_return).mean(dim=(0, 1)) 
+        return value_loss
 
 
-    def update_actor(self, returns):
-        actor_loss = -torch.mean(returns)
+    def update_actor(self, actor_loss):
+        # actor_loss = -torch.mean(returns)
         # Update model parameters
         self.actor_optimizer.zero_grad()
         actor_loss.backward()
         nn.utils.clip_grad_norm_(self.actor.parameters(), self.args.grad_clip_norm, norm_type=2)
         self.actor_optimizer.step()
-        return actor_loss
+        # return actor_loss
 
-    def update_critic(self, value_dist, target_return):
-        value_loss = -value_dist.log_prob(target_return).mean(dim=(0, 1)) 
+    def update_critic(self, value_loss):
         # Update model parameters
         self.critic_optimizer.zero_grad()
         value_loss.backward()
         nn.utils.clip_grad_norm_(self.critic.parameters(), self.args.grad_clip_norm, norm_type=2)
         self.critic_optimizer.step()
-        return value_loss
 
     def main(self, beliefs, posterior_states, model_modules, transition_model, reward_model):
         imged_beliefs, imged_prior_states, imged_prior_means, imged_prior_std_devs = self.generate_trace(beliefs, posterior_states, model_modules, transition_model)
-        returns = self.compute_feedback_actor(imged_beliefs, imged_prior_states, imged_prior_means, imged_prior_std_devs, model_modules, reward_model)
-        value_dist, target_return = self.compute_feedback_critic(imged_beliefs, imged_prior_states, returns)
-        actor_loss = self.update_actor(returns)
-        value_loss = self.update_critic(value_dist, target_return)
+        returns, actor_loss = self.compute_feedback_actor(imged_beliefs, imged_prior_states, imged_prior_means, imged_prior_std_devs, model_modules, reward_model)
+        value_loss = self.compute_feedback_critic(imged_beliefs, imged_prior_states, returns)
+        self.update_actor(actor_loss)
+        self.update_critic(value_loss)
         return actor_loss, value_loss
 
 
