@@ -27,7 +27,7 @@ class MonolithicModelWrapper(nn.Module):
         self.observation = observation
         self.reward = reward
         self.optimizer = optimizer
-        self.args = args  # later this should be changed to model_args
+        self.args = args  # later this should be changed to model_self.args
 
     def main(self, observations, actions, rewards, nonterminals, free_nats, global_prior, param_list):
 
@@ -36,11 +36,10 @@ class MonolithicModelWrapper(nn.Module):
         observation_model = self.observation
         reward_model = self.reward
         model_optimizer = self.optimizer
-        args = self.args
 
 
         # Create initial belief and state for time t = 0
-        init_belief, init_state = transition_model.initial_step(observation=observations[0], device=args.device)
+        init_belief, init_state = transition_model.initial_step(observation=observations[0], device=self.args.device)
 
         # Update belief/state using posterior from previous belief/state, previous action and current observation (over entire sequence at once)
         beliefs, prior_states, prior, posterior_states, posterior = transition_model.filter(
@@ -51,13 +50,13 @@ class MonolithicModelWrapper(nn.Module):
                 nonterminals=nonterminals[:-1])
 
         # Calculate observation likelihood, reward likelihood and KL losses (for t = 0 only for latent overshooting); sum over final dims, average over batch and time (original implementation, though paper seems to miss 1/T scaling?)
-        if args.worldmodel_LogProbLoss:
+        if self.args.worldmodel_LogProbLoss:
             observation_dist = Normal(bottle(observation_model, (beliefs, posterior_states)), 1)
-            observation_loss = -observation_dist.log_prob(observations[1:]).sum(dim=2 if args.symbolic_env else (2, 3, 4)).mean(dim=(0, 1))
+            observation_loss = -observation_dist.log_prob(observations[1:]).sum(dim=2 if self.args.symbolic_env else (2, 3, 4)).mean(dim=(0, 1))
         else: 
-            observation_loss = F.mse_loss(bottle(observation_model, (beliefs, posterior_states)), observations[1:], reduction='none').sum(dim=2 if args.symbolic_env else (2, 3, 4)).mean(dim=(0, 1))
+            observation_loss = F.mse_loss(bottle(observation_model, (beliefs, posterior_states)), observations[1:], reduction='none').sum(dim=2 if self.args.symbolic_env else (2, 3, 4)).mean(dim=(0, 1))
 
-        if args.worldmodel_LogProbLoss:
+        if self.args.worldmodel_LogProbLoss:
             reward_dist = Normal(bottle(reward_model, (beliefs, posterior_states)),1)
             reward_loss = -reward_dist.log_prob(rewards[:-1]).mean(dim=(0, 1))
         else:
@@ -66,17 +65,17 @@ class MonolithicModelWrapper(nn.Module):
         # transition loss
         div = kl_divergence(posterior, prior).sum(dim=2)
         kl_loss = torch.max(div, free_nats).mean(dim=(0, 1))  # Note that normalisation by overshooting distance and weighting by overshooting distance cancel out
-        if args.global_kl_beta != 0:
-            kl_loss += args.global_kl_beta * kl_divergence(posterior, global_prior).sum(dim=2).mean(dim=(0, 1))
+        if self.args.global_kl_beta != 0:
+            kl_loss += self.args.global_kl_beta * kl_divergence(posterior, global_prior).sum(dim=2).mean(dim=(0, 1))
 
 
         # Calculate latent overshooting objective for t > 0
-        if args.overshooting_kl_beta != 0:
+        if self.args.overshooting_kl_beta != 0:
             overshooting_vars = []  # Collect variables for overshooting to process in batch
-            for t in range(1, args.chunk_size - 1):
-                d = min(t + args.overshooting_distance, args.chunk_size - 1)  # Overshooting distance
+            for t in range(1, self.args.chunk_size - 1):
+                d = min(t + self.args.overshooting_distance, self.args.chunk_size - 1)  # Overshooting distance
                 t_, d_ = t - 1, d - 1  # Use t_ and d_ to deal with different time indexing for latent states
-                seq_pad = (0, 0, 0, 0, 0, t - d + args.overshooting_distance)  # Calculate sequence padding so overshooting terms can be calculated in one batch
+                seq_pad = (0, 0, 0, 0, 0, t - d + self.args.overshooting_distance)  # Calculate sequence padding so overshooting terms can be calculated in one batch
                 # Store (0) actions, (1) nonterminals, (2) rewards, (3) beliefs, (4) prior states, (5) posterior means, (6) posterior standard deviations and (7) sequence masks
                 overshooting_vars.append(
                     itf.Overshooting(
@@ -87,7 +86,7 @@ class MonolithicModelWrapper(nn.Module):
                         prior_states=prior_states[t_], 
                         posterior_means=F.pad(posterior.loc[t_ + 1:d_ + 1].detach(), seq_pad), 
                         posterior_std_devs=F.pad(posterior.scale[t_ + 1:d_ + 1].detach(), seq_pad, value=1), 
-                        masks=F.pad(torch.ones(d - t, args.batch_size, args.state_size, device=args.device), seq_pad)
+                        masks=F.pad(torch.ones(d - t, self.args.batch_size, self.args.state_size, device=self.args.device), seq_pad)
                     ))  # Posterior standard deviations must be padded with > 0 to prevent infinite KL divergences
 
             overshooting_vars = itf.Overshooting(*zip(*overshooting_vars))
@@ -107,21 +106,21 @@ class MonolithicModelWrapper(nn.Module):
 
             seq_mask = torch.cat(overshooting_vars.masks, dim=1)
             # Calculate overshooting KL loss with sequence mask
-            kl_loss += (1 / args.overshooting_distance) * args.overshooting_kl_beta * torch.max((kl_divergence(ovsht_posterior, ovsht_prior) * seq_mask).sum(dim=2), free_nats).mean(dim=(0, 1)) * (args.chunk_size - 1)  # Update KL loss (compensating for extra average over each overshooting/open loop sequence) 
+            kl_loss += (1 / self.args.overshooting_distance) * self.args.overshooting_kl_beta * torch.max((kl_divergence(ovsht_posterior, ovsht_prior) * seq_mask).sum(dim=2), free_nats).mean(dim=(0, 1)) * (self.args.chunk_size - 1)  # Update KL loss (compensating for extra average over each overshooting/open loop sequence) 
 
             # Calculate overshooting reward prediction loss with sequence mask
-            if args.overshooting_reward_scale != 0: 
-                reward_loss += (1 / args.overshooting_distance) * args.overshooting_reward_scale * F.mse_loss(bottle(reward_model, (ovsht_beliefs, ovsht_prior_states)) * seq_mask[:, :, 0], torch.cat(overshooting_vars.rewards, dim=1), reduction='none').mean(dim=(0, 1)) * (args.chunk_size - 1)  # Update reward loss (compensating for extra average over each overshooting/open loop sequence) 
+            if self.args.overshooting_reward_scale != 0: 
+                reward_loss += (1 / self.args.overshooting_distance) * self.args.overshooting_reward_scale * F.mse_loss(bottle(reward_model, (ovsht_beliefs, ovsht_prior_states)) * seq_mask[:, :, 0], torch.cat(overshooting_vars.rewards, dim=1), reduction='none').mean(dim=(0, 1)) * (self.args.chunk_size - 1)  # Update reward loss (compensating for extra average over each overshooting/open loop sequence) 
 
         # Apply linearly ramping learning rate schedule
-        if args.learning_rate_schedule != 0:
+        if self.args.learning_rate_schedule != 0:
             for group in model_optimizer.param_groups:
-                group['lr'] = min(group['lr'] + args.model_learning_rate / args.learning_rate_schedule, args.model_learning_rate)
+                group['lr'] = min(group['lr'] + self.args.model_learning_rate / self.args.learning_rate_schedule, self.args.model_learning_rate)
         model_loss = observation_loss + reward_loss + kl_loss
         # Update model parameters
         model_optimizer.zero_grad()
         model_loss.backward()
-        nn.utils.clip_grad_norm_(param_list, args.grad_clip_norm, norm_type=2)
+        nn.utils.clip_grad_norm_(param_list, self.args.grad_clip_norm, norm_type=2)
         model_optimizer.step()
 
         return beliefs, posterior_states, observation_loss, reward_loss, kl_loss
@@ -150,52 +149,59 @@ class MonolithicPolicyWrapper(nn.Module):
         self.critic = critic
         self.actor_optimizer = actor_optimizer
         self.critic_optimizer = critic_optimizer
-        self.args = args  # later this should be changed to model_args
+        self.args = args  # later this should be changed to model_self.args
 
-
-    def main(self, beliefs, posterior_states, model_modules, transition_model, reward_model):
-
-        actor_model = self.actor
-        value_model = self.critic
-        actor_optimizer = self.actor_optimizer
-        value_optimizer = self.critic_optimizer
-        args = self.args
-
-
-
-
+    def generate_trace(self, beliefs, posterior_states, model_modules, transition_model):
         #Dreamer implementation: actor loss calculation and optimization    
         with torch.no_grad():
             actor_states = posterior_states.detach()
             actor_beliefs = beliefs.detach()
         with FreezeParameters(model_modules):
-            imagination_traj = imagine_ahead(actor_states, actor_beliefs, actor_model, transition_model, args.planning_horizon)
+            imagination_traj = imagine_ahead(actor_states, actor_beliefs, self.actor, transition_model, self.args.planning_horizon)
         imged_beliefs, imged_prior_states, imged_prior_means, imged_prior_std_devs = imagination_traj
+        return imged_beliefs, imged_prior_states, imged_prior_means, imged_prior_std_devs
 
-        with FreezeParameters(model_modules + value_model.modules):
+    def compute_feedback_actor(self, imged_beliefs, imged_prior_states, imged_prior_means, imged_prior_std_devs, model_modules, reward_model):
+        with FreezeParameters(model_modules + self.critic.modules):
             imged_reward = bottle(reward_model, (imged_beliefs, imged_prior_states))
-            value_pred = bottle(value_model, (imged_beliefs, imged_prior_states))
-        returns = lambda_return(imged_reward, value_pred, bootstrap=value_pred[-1], discount=args.discount, lambda_=args.disclam)
-        actor_loss = -torch.mean(returns)
-        # Update model parameters
-        actor_optimizer.zero_grad()
-        actor_loss.backward()
-        nn.utils.clip_grad_norm_(actor_model.parameters(), args.grad_clip_norm, norm_type=2)
-        actor_optimizer.step()
- 
+            value_pred = bottle(self.critic, (imged_beliefs, imged_prior_states))
+        returns = lambda_return(imged_reward, value_pred, bootstrap=value_pred[-1], discount=self.args.discount, lambda_=self.args.disclam)
+        return returns
+
+    def compute_feedback_critic(self, imged_beliefs, imged_prior_states, returns):
         #Dreamer implementation: value loss calculation and optimization
         with torch.no_grad():
             value_beliefs = imged_beliefs.detach()
             value_prior_states = imged_prior_states.detach()
             target_return = returns.detach()
-        value_dist = Normal(bottle(value_model, (value_beliefs, value_prior_states)),1) # detach the input tensor from the transition network.
+        value_dist = Normal(bottle(self.critic, (value_beliefs, value_prior_states)),1) # detach the input tensor from the transition network.
+        return value_dist, target_return
+
+
+    def update_actor(self, returns):
+        actor_loss = -torch.mean(returns)
+        # Update model parameters
+        self.actor_optimizer.zero_grad()
+        actor_loss.backward()
+        nn.utils.clip_grad_norm_(self.actor.parameters(), self.args.grad_clip_norm, norm_type=2)
+        self.actor_optimizer.step()
+        return actor_loss
+
+    def update_critic(self, value_dist, target_return):
         value_loss = -value_dist.log_prob(target_return).mean(dim=(0, 1)) 
         # Update model parameters
-        value_optimizer.zero_grad()
+        self.critic_optimizer.zero_grad()
         value_loss.backward()
-        nn.utils.clip_grad_norm_(value_model.parameters(), args.grad_clip_norm, norm_type=2)
-        value_optimizer.step()
+        nn.utils.clip_grad_norm_(self.critic.parameters(), self.args.grad_clip_norm, norm_type=2)
+        self.critic_optimizer.step()
+        return value_loss
 
+    def main(self, beliefs, posterior_states, model_modules, transition_model, reward_model):
+        imged_beliefs, imged_prior_states, imged_prior_means, imged_prior_std_devs = self.generate_trace(beliefs, posterior_states, model_modules, transition_model)
+        returns = self.compute_feedback_actor(imged_beliefs, imged_prior_states, imged_prior_means, imged_prior_std_devs, model_modules, reward_model)
+        value_dist, target_return = self.compute_feedback_critic(imged_beliefs, imged_prior_states, returns)
+        actor_loss = self.update_actor(returns)
+        value_loss = self.update_critic(value_dist, target_return)
         return actor_loss, value_loss
 
 
