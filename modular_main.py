@@ -273,6 +273,12 @@ monolithic_model = mw.MonolithicModelWrapper(
     reward=reward_model,
     optimizer=model_optimizer,
     args=args)
+monolithic_policy = mw.MonolithicPolicyWrapper(
+    actor=actor_model,
+    critic=value_model,
+    actor_optimizer=actor_optimizer,
+    critic_optimizer=value_optimizer,
+    args=args)
 
 
 # Training (and testing)
@@ -289,37 +295,7 @@ for episode in tqdm(range(metrics['episodes'][-1] + 1, args.episodes + 1), total
 
         beliefs, posterior_states, observation_loss, reward_loss, kl_loss = monolithic_model.main(observations, actions, rewards, nonterminals, free_nats, global_prior, param_list)
 
-        #Dreamer implementation: actor loss calculation and optimization    
-        with torch.no_grad():
-            actor_states = posterior_states.detach()
-            actor_beliefs = beliefs.detach()
-        with FreezeParameters(model_modules):
-            imagination_traj = imagine_ahead(actor_states, actor_beliefs, actor_model, transition_model, args.planning_horizon)
-        imged_beliefs, imged_prior_states, imged_prior_means, imged_prior_std_devs = imagination_traj
-
-        with FreezeParameters(model_modules + value_model.modules):
-            imged_reward = bottle(reward_model, (imged_beliefs, imged_prior_states))
-            value_pred = bottle(value_model, (imged_beliefs, imged_prior_states))
-        returns = lambda_return(imged_reward, value_pred, bootstrap=value_pred[-1], discount=args.discount, lambda_=args.disclam)
-        actor_loss = -torch.mean(returns)
-        # Update model parameters
-        actor_optimizer.zero_grad()
-        actor_loss.backward()
-        nn.utils.clip_grad_norm_(actor_model.parameters(), args.grad_clip_norm, norm_type=2)
-        actor_optimizer.step()
- 
-        #Dreamer implementation: value loss calculation and optimization
-        with torch.no_grad():
-            value_beliefs = imged_beliefs.detach()
-            value_prior_states = imged_prior_states.detach()
-            target_return = returns.detach()
-        value_dist = Normal(bottle(value_model, (value_beliefs, value_prior_states)),1) # detach the input tensor from the transition network.
-        value_loss = -value_dist.log_prob(target_return).mean(dim=(0, 1)) 
-        # Update model parameters
-        value_optimizer.zero_grad()
-        value_loss.backward()
-        nn.utils.clip_grad_norm_(value_model.parameters(), args.grad_clip_norm, norm_type=2)
-        value_optimizer.step()
+        actor_loss, value_loss = monolithic_policy.main(beliefs, posterior_states, model_modules, monolithic_model.transition, monolithic_model.reward)
         
         # # Store (0) observation loss (1) reward loss (2) KL loss (3) actor loss (4) value loss
         losses.append([observation_loss.item(), reward_loss.item(), kl_loss.item(), actor_loss.item(), value_loss.item()])

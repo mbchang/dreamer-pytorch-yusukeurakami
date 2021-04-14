@@ -5,6 +5,8 @@ from torch.distributions import Normal
 from torch.distributions.kl import kl_divergence
 
 from models import bottle
+from utils import imagine_ahead, lambda_return, FreezeParameters
+
 import slots.interfaces as itf
 
 
@@ -124,9 +126,6 @@ class MonolithicModelWrapper(nn.Module):
 
         return beliefs, posterior_states, observation_loss, reward_loss, kl_loss
 
-
-
-
     def generate_trace(self):
         pass
 
@@ -136,8 +135,81 @@ class MonolithicModelWrapper(nn.Module):
     def update(self):
         pass
 
-class MonolithicActorWrapper(nn.Module):
-    pass
+# class MonolithicActorWrapper(nn.Module):
+#     pass
 
-class MonolithicValueWrapper(nn.Module):
-    pass
+# class MonolithicValueWrapper(nn.Module):
+#     pass
+
+
+
+class MonolithicPolicyWrapper(nn.Module):
+    def __init__(self, actor, critic, actor_optimizer, critic_optimizer, args):
+        nn.Module.__init__(self)
+        self.actor = actor
+        self.critic = critic
+        self.actor_optimizer = actor_optimizer
+        self.critic_optimizer = critic_optimizer
+        self.args = args  # later this should be changed to model_args
+
+
+    def main(self, beliefs, posterior_states, model_modules, transition_model, reward_model):
+
+        actor_model = self.actor
+        value_model = self.critic
+        actor_optimizer = self.actor_optimizer
+        value_optimizer = self.critic_optimizer
+        args = self.args
+
+
+
+
+        #Dreamer implementation: actor loss calculation and optimization    
+        with torch.no_grad():
+            actor_states = posterior_states.detach()
+            actor_beliefs = beliefs.detach()
+        with FreezeParameters(model_modules):
+            imagination_traj = imagine_ahead(actor_states, actor_beliefs, actor_model, transition_model, args.planning_horizon)
+        imged_beliefs, imged_prior_states, imged_prior_means, imged_prior_std_devs = imagination_traj
+
+        with FreezeParameters(model_modules + value_model.modules):
+            imged_reward = bottle(reward_model, (imged_beliefs, imged_prior_states))
+            value_pred = bottle(value_model, (imged_beliefs, imged_prior_states))
+        returns = lambda_return(imged_reward, value_pred, bootstrap=value_pred[-1], discount=args.discount, lambda_=args.disclam)
+        actor_loss = -torch.mean(returns)
+        # Update model parameters
+        actor_optimizer.zero_grad()
+        actor_loss.backward()
+        nn.utils.clip_grad_norm_(actor_model.parameters(), args.grad_clip_norm, norm_type=2)
+        actor_optimizer.step()
+ 
+        #Dreamer implementation: value loss calculation and optimization
+        with torch.no_grad():
+            value_beliefs = imged_beliefs.detach()
+            value_prior_states = imged_prior_states.detach()
+            target_return = returns.detach()
+        value_dist = Normal(bottle(value_model, (value_beliefs, value_prior_states)),1) # detach the input tensor from the transition network.
+        value_loss = -value_dist.log_prob(target_return).mean(dim=(0, 1)) 
+        # Update model parameters
+        value_optimizer.zero_grad()
+        value_loss.backward()
+        nn.utils.clip_grad_norm_(value_model.parameters(), args.grad_clip_norm, norm_type=2)
+        value_optimizer.step()
+
+        return actor_loss, value_loss
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
