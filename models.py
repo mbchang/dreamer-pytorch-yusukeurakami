@@ -184,7 +184,7 @@ class RewardModel(jit.ScriptModule):
 		x = torch.cat([belief, state],dim=1)
 		hidden = self.act_fn(self.fc1(x))
 		hidden = self.act_fn(self.fc2(hidden))
-		reward = self.fc3(hidden).squeeze(dim=1)
+		reward = self.fc3(hidden).squeeze(dim=1)  # (B)
 		return reward
 
 class ValueModel(jit.ScriptModule):
