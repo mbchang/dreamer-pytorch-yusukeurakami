@@ -30,16 +30,22 @@ def _images_to_observation(images, bit_depth):
 	preprocess_observation_(images, bit_depth)  # Quantise, centre and dequantise inplace
 	return images.unsqueeze(dim=0)  # Add batch dimension
 
+# def _pygame_images_to_observation(images, bit_depth):
+# 	images = torch.tensor(cv2.resize(images, (64, 64), interpolation=cv2.INTER_LINEAR).transpose(2, 0, 1), dtype=torch.float32)  # Resize and put channel first
+# 	images = images - 0.5  # centre
+# 	# preprocess_observation_(images, bit_depth)  # Quantise, centre and dequantise inplace
+# 	return images.unsqueeze(dim=0)  # Add batch dimension
+
 def _pygame_images_to_observation(images, bit_depth):
-
-	# print(len(images))
-	# print(images[0].shape)
-	# assert False
-
 	images = torch.tensor(cv2.resize(images, (64, 64), interpolation=cv2.INTER_LINEAR).transpose(2, 0, 1), dtype=torch.float32)  # Resize and put channel first
-	images = images - 0.5  # centre
+	# images = images - 0.5  # centre
 	# preprocess_observation_(images, bit_depth)  # Quantise, centre and dequantise inplace
 	return images.unsqueeze(dim=0)  # Add batch dimension
+
+
+
+
+
 
 
 

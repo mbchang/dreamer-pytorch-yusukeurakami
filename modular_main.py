@@ -21,6 +21,7 @@ import slots.static_slot_attention as ssa
 import slots.dynamics_models as dm
 import slots.policy as pol
 import modular_wrappers as mw
+from entity_memory import EntityExperienceReplay
 
 
 # Hyperparameters
@@ -125,7 +126,10 @@ if args.experience_replay != '' and os.path.exists(args.experience_replay):
     D = torch.load(args.experience_replay)
     metrics['steps'], metrics['episodes'] = [D.steps] * D.episodes, list(range(1, D.episodes + 1))
 elif not args.test:
-    D = ExperienceReplay(args.experience_size, args.symbolic_env, env.observation_size, env.action_size, args.bit_depth, args.device)
+    if args.slots:
+        D = EntityExperienceReplay(args.experience_size, args.symbolic_env, env.observation_size, env.action_size, args.bit_depth, args.device)
+    else:
+        D = ExperienceReplay(args.experience_size, args.symbolic_env, env.observation_size, env.action_size, args.bit_depth, args.device)
     # Initialise dataset D with S random seed episodes
     for s in tqdm(range(1, args.seed_episodes + 1)):
         observation, done, t = env.reset(), False, 0
@@ -406,7 +410,11 @@ for episode in tqdm(range(metrics['episodes'][-1] + 1, args.episodes + 1), total
                             masked_rgbs.permute((1,0,2,3,4)).reshape(vis_b*args.num_slots, c, h, w)  # (B*K, C, H, W)
                             ], dim=0)  # (B*(1+1+K), C, H, W)
 
-                        video_frames.append(make_grid(frame+0.5, nrow=args.test_episodes).numpy())  # Decentre
+                        # video_frames.append(make_grid(frame+0.5, nrow=args.test_episodes).numpy())  # Decentre
+
+
+                        video_frames.append(make_grid(frame, nrow=args.test_episodes).numpy())  # Decentre
+
                     else:
                         video_frames.append(make_grid(torch.cat([observation, observation_model(belief, posterior_state).cpu()], dim=3) + 0.5, nrow=5).numpy())  # Decentre
 
