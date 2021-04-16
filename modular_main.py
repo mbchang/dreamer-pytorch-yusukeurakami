@@ -382,12 +382,41 @@ for episode in tqdm(range(metrics['episodes'][-1] + 1, args.episodes + 1), total
             for t in pbar:
                 belief, posterior_state, action, next_observation, reward, done = update_belief_and_act(args, test_envs, planner, transition_model, encoder, belief, posterior_state, action, observation.to(device=args.device))
                 total_rewards += reward.numpy()
+
+
+
+
                 if not args.symbolic_env:  # Collect real vs. predicted frames for video
-                    video_frames.append(make_grid(torch.cat([observation, observation_model(belief, posterior_state).cpu()], dim=3) + 0.5, nrow=5).numpy())  # Decentre
+
+                    if args.slots:
+                        frame = torch.cat([observation, observation_model(belief, posterior_state).cpu()], dim=3)  # decenter
+
+                        vis_b = belief.shape[0]
+                        vis_belief = belief.reshape(vis_b, args.num_slots, -1)
+                        vis_state = posterior_state.reshape(vis_b, args.num_slots, -1)
+                        vis_x = torch.cat([vis_belief, vis_state], dim=-1)
+
+                        masked_rgbs, pred = observation_model.decode(vis_x)
+
+
+                        c, h, w = observation.shape[-3:]
+                        frame = torch.cat([
+                            observation,  # (B, C, H, W)
+                            pred,  # (B, C, H, W)
+                            masked_rgbs.permute((1,0,2,3,4)).reshape(vis_b*args.num_slots, c, h, w)  # (B*K, C, H, W)
+                            ], dim=0)  # (B*(1+1+K), C, H, W)
+
+                        video_frames.append(make_grid(frame+0.5, nrow=args.test_episodes).numpy())  # Decentre
+                    else:
+                        video_frames.append(make_grid(torch.cat([observation, observation_model(belief, posterior_state).cpu()], dim=3) + 0.5, nrow=5).numpy())  # Decentre
+
+
                 observation = next_observation
                 if done.sum().item() == args.test_episodes:
                     pbar.close()
                     break
+
+                #########################
         
         # Update and plot reward metrics (and write video if applicable) and save metrics
         metrics['test_episodes'].append(episode)
