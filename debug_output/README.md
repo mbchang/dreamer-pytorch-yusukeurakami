@@ -43,3 +43,7 @@ CUDA_VISIBLE_DEVICES=7 DEVICE=:0 env PYTORCH_JIT=0 python entity_main.py --algo 
 4/14/21
 Debugging modular
 env PYTORCH_JIT=0 python modular_main.py --algo dreamer --env walker-walk --action-repeat 2 --id debug0 --episodes 10 --batch-size 8 --chunk-size 20 --collect-interval 2 --global-kl-beta 1e-1 --overshooting-kl-beta 1e-1 --overshooting-reward-scale 1e-1 --learning-rate-schedule 10 --max-episode-length 20 --test-interval 1
+
+4/15/21
+k=1, object-centric dreamer
+CUDA_VISIBLE_DEVICES=7 DEVICE=:0 env PYTORCH_JIT=0 python modular_main.py --algo dreamer --env simple_box --action-repeat 2 --id simple_box_debug_mlr1e-4_alr1e-5_vlr1e-5_mel100_se1000_e1000000_fix_rendering_scale_action_big --model_learning-rate 1e-4 --actor_learning-rate 1e-5 --value_learning-rate 1e-5 --max-episode-length 100 --seed-episodes 1000 --episodes 1000000 --slots --num_slots 1 --batch-size 10

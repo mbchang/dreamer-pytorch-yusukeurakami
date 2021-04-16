@@ -19,6 +19,7 @@ import slots.interfaces as itf
 import slots.latent_variable_model as lvm
 import slots.static_slot_attention as ssa
 import slots.dynamics_models as dm
+import slots.policy as pol
 import modular_wrappers as mw
 
 
@@ -76,6 +77,7 @@ parser.add_argument('--render', action='store_true', help='Render environment')
 
 
 parser.add_argument('--slots', action='store_true', help='object-centric')
+parser.add_argument('--num_slots', type=int, default=1)
 
 args = parser.parse_args()
 args.overshooting_distance = min(args.chunk_size, args.overshooting_distance)  # Overshooting distance cannot be greater than chunk size
@@ -148,22 +150,22 @@ print('Initializing model...')
 if args.slots:
     transition_model = lvm.SlotTransitionModel(
         recognition_model=ssa.RecognitionModel(
-            num_slots=5,
-            interface_dim=args.belief_size//5,
-            slot_dim=args.belief_size//5,
+            num_slots=args.num_slots,
+            interface_dim=args.belief_size//args.num_slots,
+            slot_dim=args.belief_size//args.num_slots,
             iters=3,
             slot_temp=0.1
             ),
         dynamics_model=dm.RSSM(
-            stoch_dim=args.state_size//5,
+            stoch_dim=args.state_size//args.num_slots,
             model=dm.SlotDynamicsModel(
-                state_dim=args.belief_size//5, 
+                state_dim=args.belief_size//args.num_slots, 
                 action_dim=env.action_size, 
-                hid_dim=args.hidden_size//5, 
+                hid_dim=args.hidden_size//args.num_slots, 
                 interaction_type='pairwise')),
         rssm_head=dm.RSSMHead(
-            indim=args.belief_size//5,
-            outdim=args.state_size//5,
+            indim=args.belief_size//args.num_slots,
+            outdim=args.state_size//args.num_slots,
             ),
         mode='dynamics',
         device=args.device
@@ -175,15 +177,17 @@ else:
 
 ####################################
 if args.slots:
-    observation_model = ssa.ObservationModel(indim=args.belief_size//5+args.state_size//5, num_slots=5, scale=0.1).to(device=args.device)
+    observation_model = ssa.ObservationModel(indim=args.belief_size//args.num_slots+args.state_size//args.num_slots, num_slots=args.num_slots, scale=0.1).to(device=args.device)
 
     # print(observation_model.modules)
 else:
     observation_model = ObservationModel(args.symbolic_env, env.observation_size, args.belief_size, args.state_size, args.embedding_size, args.cnn_activation_function).to(device=args.device)
 
 
-
-reward_model = RewardModel(args.belief_size, args.state_size, args.hidden_size, args.dense_activation_function).to(device=args.device)
+if args.slots:
+    reward_model = pol.EntityRewardModel(args.num_slots, args.belief_size//args.num_slots, args.state_size//args.num_slots, args.hidden_size//args.num_slots, args.dense_activation_function).to(device=args.device)
+else:
+    reward_model = RewardModel(args.belief_size, args.state_size, args.hidden_size, args.dense_activation_function).to(device=args.device)
 
 ####################################
 if args.slots:
@@ -194,8 +198,24 @@ else:
 # encoder = lvm.IdentityEncoder()
 ####################################
 
-actor_model = ActorModel(args.belief_size, args.state_size, args.hidden_size, env.action_size, args.dense_activation_function).to(device=args.device)
-value_model = ValueModel(args.belief_size, args.state_size, args.hidden_size, args.dense_activation_function).to(device=args.device)
+
+if args.slots:
+    actor_model = pol.EntityActorModel(args.num_slots, args.belief_size//args.num_slots, args.state_size//args.num_slots, args.hidden_size//args.num_slots, env.action_size, args.dense_activation_function).to(device=args.device)
+else:
+    actor_model = ActorModel(args.belief_size, args.state_size, args.hidden_size, env.action_size, args.dense_activation_function).to(device=args.device)
+
+
+if args.slots:
+    value_model = pol.EntityValueModel(args.num_slots, args.belief_size//args.num_slots, args.state_size//args.num_slots, args.hidden_size//args.num_slots, args.dense_activation_function).to(device=args.device)
+else:
+
+    value_model = ValueModel(args.belief_size, args.state_size, args.hidden_size, args.dense_activation_function).to(device=args.device)
+
+
+
+
+
+
 param_list = list(transition_model.parameters()) + list(observation_model.parameters()) + list(reward_model.parameters()) + list(encoder.parameters())
 value_actor_param_list = list(value_model.parameters()) + list(actor_model.parameters())
 params_list = param_list + value_actor_param_list
