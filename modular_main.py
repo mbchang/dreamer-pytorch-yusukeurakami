@@ -401,7 +401,7 @@ for episode in tqdm(range(metrics['episodes'][-1] + 1, args.episodes + 1), total
                         vis_x = torch.cat([vis_belief, vis_state], dim=-1)
 
                         masked_rgbs, pred = observation_model.decode(vis_x)
-
+                        masked_rgbs, pred = masked_rgbs.cpu(), pred.cpu()
 
                         c, h, w = observation.shape[-3:]
                         frame = torch.cat([
