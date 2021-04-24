@@ -8,7 +8,7 @@ from torch.distributions.kl import kl_divergence
 from torch.nn import functional as F
 from torchvision.utils import make_grid, save_image
 from tqdm import tqdm
-from env import CONTROL_SUITE_ENVS, Env, GYM_ENVS, EnvBatcher, SIMPLE_ENTITY_ENVS
+from env import CONTROL_SUITE_ENVS, Env, GYM_ENVS, EnvBatcher, SIMPLE_ENTITY_ENVS, SimpleEntityEnv
 from memory import ExperienceReplay
 from models import bottle, Encoder, ObservationModel, RewardModel, TransitionModel, ValueModel, ActorModel
 from planner import MPCPlanner
@@ -17,7 +17,7 @@ from tensorboardX import SummaryWriter
 
 import slots.interfaces as itf
 import slots.latent_variable_model as lvm
-import slots.static_slot_attention as ssa
+import slots.static_slot_attention_modules as ssa
 import slots.dynamics_models as dm
 import slots.policy as pol
 import modular_wrappers as mw
@@ -392,6 +392,39 @@ for episode in tqdm(range(metrics['episodes'][-1] + 1, args.episodes + 1), total
 
                 if not args.symbolic_env:  # Collect real vs. predicted frames for video
 
+                    # print(type(env))
+                    # assert False
+
+                    # if args.slots:
+                    #     frame = torch.cat([observation, observation_model(belief, posterior_state).cpu()], dim=3)  # decenter
+
+                    #     vis_b = belief.shape[0]
+                    #     vis_belief = belief.reshape(vis_b, args.num_slots, -1)
+                    #     vis_state = posterior_state.reshape(vis_b, args.num_slots, -1)
+                    #     vis_x = torch.cat([vis_belief, vis_state], dim=-1)
+
+                    #     masked_rgbs, pred = observation_model.decode(vis_x)
+                    #     masked_rgbs, pred = masked_rgbs.cpu(), pred.cpu()
+
+                    #     c, h, w = observation.shape[-3:]
+                    #     frame = torch.cat([
+                    #         observation,  # (B, C, H, W)
+                    #         pred,  # (B, C, H, W)
+                    #         masked_rgbs.permute((1,0,2,3,4)).reshape(vis_b*args.num_slots, c, h, w)  # (B*K, C, H, W)
+                    #         ], dim=0)  # (B*(1+1+K), C, H, W)
+
+                    #     # video_frames.append(make_grid(frame+0.5, nrow=args.test_episodes).numpy())  # Decentre
+
+
+                    #     video_frames.append(make_grid(frame, nrow=args.test_episodes).numpy())  # Decentre
+
+                    # else:
+                    #     video_frames.append(make_grid(torch.cat([observation, observation_model(belief, posterior_state).cpu()], dim=3) + 0.5, nrow=5).numpy())  # Decentre
+
+
+
+
+
                     if args.slots:
                         frame = torch.cat([observation, observation_model(belief, posterior_state).cpu()], dim=3)  # decenter
 
@@ -412,11 +445,16 @@ for episode in tqdm(range(metrics['episodes'][-1] + 1, args.episodes + 1), total
 
                         # video_frames.append(make_grid(frame+0.5, nrow=args.test_episodes).numpy())  # Decentre
 
-
-                        video_frames.append(make_grid(frame, nrow=args.test_episodes).numpy())  # Decentre
+                        if isinstance(env, SimpleEntityEnv):
+                            video_frames.append(make_grid(frame, nrow=args.test_episodes).numpy())  # Decentre
+                        else:
+                            video_frames.append(make_grid(frame+0.5, nrow=args.test_episodes).numpy())  # Decentre
 
                     else:
-                        video_frames.append(make_grid(torch.cat([observation, observation_model(belief, posterior_state).cpu()], dim=3) + 0.5, nrow=5).numpy())  # Decentre
+                        if isinstance(env, SimpleEntityEnv):
+                            video_frames.append(make_grid(torch.cat([observation, observation_model(belief, posterior_state).cpu()], dim=3), nrow=5).numpy())  # Decentre
+                        else:
+                            video_frames.append(make_grid(torch.cat([observation, observation_model(belief, posterior_state).cpu()], dim=3) + 0.5, nrow=5).numpy())  # Decentre
 
 
                 observation = next_observation

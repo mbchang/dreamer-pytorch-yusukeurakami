@@ -17,7 +17,7 @@ from tensorboardX import SummaryWriter
 
 import slots.interfaces as itf
 import slots.latent_variable_model as lvm
-import slots.static_slot_attention as ssa
+import slots.static_slot_attention_modules as ssa
 import slots.dynamics_models as dm
 
 
