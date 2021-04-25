@@ -79,3 +79,6 @@ CUDA_VISIBLE_DEVICES=2 DEVICE=:0 env PYTORCH_JIT=0 python modular_main.py --algo
 (dreamer5)
 CUDA_VISIBLE_DEVICES=6 DEVICE=:0 env PYTORCH_JIT=0 python modular_main.py --algo dreamer --env simple_box4_separate --action-repeat 2 --id 4_23_21_modular_monolithic_balls --max-episode-length 100 --seed-episodes 1000 --episodes 1000000
 
+
+4/24/21
+CUDA_VISIBLE_DEVICES=0 DEVICE=:0 env PYTORCH_JIT=0 python modular_main.py --algo dreamer --env simple_box4_separate --action-repeat 2 --id 4_24_21_slots_lvm_only --model_learning-rate 5e-5 --actor_learning-rate 0 --value_learning-rate 0 --max-episode-length 100 --chunk-size 2 --seed-episodes 10000 --episodes 1000000 --slots --num_slots 5 --batch-size 10

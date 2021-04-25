@@ -37,11 +37,12 @@ class MonolithicModelWrapper(nn.Module):
 
 
         # Calculate latent overshooting objective for t > 0
-        if self.args.overshooting_kl_beta != 0:
+        if not self.args.lvm_only:
+            if self.args.overshooting_kl_beta != 0:
 
-            overshooting_vars, ovsht_beliefs, ovsht_prior_states, ovsht_prior, ovsht_posterior = self.generate_overshooting_trace(actions, nonterminals, rewards, beliefs, prior_states, posterior)
+                overshooting_vars, ovsht_beliefs, ovsht_prior_states, ovsht_prior, ovsht_posterior = self.generate_overshooting_trace(actions, nonterminals, rewards, beliefs, prior_states, posterior)
 
-            reward_loss, kl_loss = self.compute_overshooting_feedback(overshooting_vars, ovsht_beliefs, ovsht_prior_states, ovsht_prior, ovsht_posterior, free_nats, reward_loss, kl_loss)
+                reward_loss, kl_loss = self.compute_overshooting_feedback(overshooting_vars, ovsht_beliefs, ovsht_prior_states, ovsht_prior, ovsht_posterior, free_nats, reward_loss, kl_loss)
 
         # Apply linearly ramping learning rate schedule
         if self.args.learning_rate_schedule != 0:
@@ -125,6 +126,10 @@ class MonolithicModelWrapper(nn.Module):
         kl_loss = torch.max(div, free_nats).mean(dim=(0, 1))  # Note that normalisation by overshooting distance and weighting by overshooting distance cancel out
         if self.args.global_kl_beta != 0:
             kl_loss += self.args.global_kl_beta * kl_divergence(posterior, global_prior).sum(dim=2).mean(dim=(0, 1))
+
+
+        if self.args.lvm_only:
+            reward_loss *= 0
 
         return observation_loss, reward_loss, kl_loss
 
@@ -214,6 +219,12 @@ class MonolithicPolicyWrapper(nn.Module):
         imged_beliefs, imged_prior_states, imged_prior_means, imged_prior_std_devs = self.generate_trace(beliefs, posterior_states, model_modules, transition_model)
         returns, actor_loss = self.compute_feedback_actor(imged_beliefs, imged_prior_states, imged_prior_means, imged_prior_std_devs, model_modules, reward_model)
         value_loss = self.compute_feedback_critic(imged_beliefs, imged_prior_states, returns)
+
+
+        if self.args.lvm_only:
+            actor_loss *= 0
+            value_loss *= 0
+
         self.update_actor(actor_loss)
         self.update_critic(value_loss)
         return actor_loss, value_loss

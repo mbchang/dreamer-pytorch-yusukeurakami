@@ -79,6 +79,7 @@ parser.add_argument('--render', action='store_true', help='Render environment')
 
 parser.add_argument('--slots', action='store_true', help='object-centric')
 parser.add_argument('--num_slots', type=int, default=1)
+parser.add_argument('--lvm_only', action='store_true', help='turn off loss for reward, actor, value')
 
 args = parser.parse_args()
 args.overshooting_distance = min(args.chunk_size, args.overshooting_distance)  # Overshooting distance cannot be greater than chunk size
@@ -339,6 +340,9 @@ for episode in tqdm(range(metrics['episodes'][-1] + 1, args.episodes + 1), total
     lineplot(metrics['episodes'][-len(metrics['value_loss']):], metrics['value_loss'], 'value_loss', results_dir)
 
 
+    # if args.lvm_only:
+    #     print('NOT COLLECTING NEW DATA')
+    # else:
     # Data collection
     print("Data collection")
     with torch.no_grad():
