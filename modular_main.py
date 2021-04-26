@@ -18,6 +18,7 @@ from tensorboardX import SummaryWriter
 import slots.interfaces as itf
 import slots.latent_variable_model as lvm
 import slots.static_slot_attention_modules as ssa
+import slots.debugging_utils as du
 import slots.dynamics_models as dm
 import slots.policy as pol
 import modular_wrappers as mw
@@ -151,40 +152,93 @@ print('Initializing model...')
 
 
 
+args.lr_decay_after = 0
+args.observation_consistency = True
+args.dkl_pwr = 1
+args.grndrate = 1
+args.lr = 0.0001
+args.lr_decay_every = int(1e4)
+args.lr_decay_gamma = 0.95
+args.kl_coeff = 1e-4
+args.dkl_coeff = 1e-4
+args.dkl_steps = int(5e4)
+dynamics_model_builder = lambda state_dim: dm.SlotDynamicsModel(state_dim, 
+            action_dim=5, hid_dim=128, interaction_type='pairwise')
+torch.manual_seed(0)
+slot_dynamic_autoencoder = lvm.RSSMLVM(
+    recognition_model=ssa.RecognitionModel(
+        num_slots=5, 
+        interface_dim=32, 
+        slot_dim=128,
+        iters=3,
+        slot_temp=1), 
+    dynamics_model=dm.RSSM(stoch_dim=128, model=dynamics_model_builder(state_dim=128)),
+    observation_model=ssa.ObservationModel(indim=128, num_slots=5, scale=10),
+    mode='dynamics',
+    device=args.device,
+    args=args).to(args.device)
+
+
+
+
+
+
+
+
+
+
+
+
+
 ####################################
 if args.slots:
-    transition_model = lvm.SlotTransitionModel(
-        recognition_model=ssa.RecognitionModel(
-            num_slots=args.num_slots,
-            interface_dim=args.belief_size//args.num_slots,
-            slot_dim=args.belief_size//args.num_slots,
-            iters=3,
-            slot_temp=0.1
-            ),
-        dynamics_model=dm.RSSM(
-            stoch_dim=args.state_size//args.num_slots,
-            model=dm.SlotDynamicsModel(
-                state_dim=args.belief_size//args.num_slots, 
-                action_dim=env.action_size, 
-                hid_dim=args.hidden_size//args.num_slots, 
-                interaction_type='pairwise')),
-        rssm_head=dm.RSSMHead(
-            indim=args.belief_size//args.num_slots,
-            outdim=args.state_size//args.num_slots,
-            ),
-        mode='dynamics',
-        device=args.device
-        ).to(device=args.device)
+    # transition_model = lvm.SlotTransitionModel(
+    #     recognition_model=ssa.RecognitionModel(
+    #         num_slots=args.num_slots,
+    #         interface_dim=args.belief_size//args.num_slots,
+    #         slot_dim=args.belief_size//args.num_slots,
+    #         iters=3,
+    #         slot_temp=0.1
+    #         ),
+    #     dynamics_model=dm.RSSM(
+    #         stoch_dim=args.state_size//args.num_slots,
+    #         model=dm.SlotDynamicsModel(
+    #             state_dim=args.belief_size//args.num_slots, 
+    #             action_dim=env.action_size, 
+    #             hid_dim=args.hidden_size//args.num_slots, 
+    #             interaction_type='pairwise')),
+    #     rssm_head=dm.RSSMHead(
+    #         indim=args.belief_size//args.num_slots,
+    #         outdim=args.state_size//args.num_slots,
+    #         ),
+    #     mode='dynamics',
+    #     device=args.device
+    #     ).to(device=args.device)
+
+    transition_model = slot_dynamic_autoencoder.transition_model
+
+
 else:
     transition_model = TransitionModel(args.belief_size, args.state_size, env.action_size, args.hidden_size, args.embedding_size, args.dense_activation_function).to(device=args.device)
+
+
+# du.visualize_parameters(transition_model, print)
+
 # --------------
 
 
 ####################################
 if args.slots:
-    observation_model = ssa.ObservationModel(indim=args.belief_size//args.num_slots+args.state_size//args.num_slots, num_slots=args.num_slots, scale=0.1).to(device=args.device)
+    # observation_model = ssa.ObservationModel(indim=args.belief_size//args.num_slots+args.state_size//args.num_slots, num_slots=args.num_slots, scale=0.1).to(device=args.device)
 
     # print(observation_model.modules)
+
+    observation_model = slot_dynamic_autoencoder.observation_model
+
+
+
+
+
 else:
     observation_model = ObservationModel(args.symbolic_env, env.observation_size, args.belief_size, args.state_size, args.embedding_size, args.cnn_activation_function).to(device=args.device)
 
@@ -290,20 +344,90 @@ if args.test:
     env.close()
     quit()
 
+if args.slots:
+    monolithic_model = mw.SlotsModelWrapper(
+        encoder=encoder,
+        transition=transition_model,
+        observation=observation_model,
+        reward=reward_model,
+        optimizer=model_optimizer,
+        args=args)
+else:
+    monolithic_model = mw.MonolithicModelWrapper(
+        encoder=encoder,
+        transition=transition_model,
+        observation=observation_model,
+        reward=reward_model,
+        optimizer=model_optimizer,
+        args=args)
 
-monolithic_model = mw.MonolithicModelWrapper(
-    encoder=encoder,
-    transition=transition_model,
-    observation=observation_model,
-    reward=reward_model,
-    optimizer=model_optimizer,
-    args=args)
+
+
 monolithic_policy = mw.MonolithicPolicyWrapper(
     actor=actor_model,
     critic=value_model,
     actor_optimizer=actor_optimizer,
     critic_optimizer=value_optimizer,
     args=args)
+
+
+print(reward_model)
+print(transition_model)
+print(observation_model)
+
+
+
+
+
+
+# args.lr = 0.0001
+# args.lr_decay_every = int(1e4)
+# args.lr_decay_gamma = 0.95
+# args.kl_coeff = 1e-4
+# args.dkl_coeff = 1e-4
+# args.dkl_steps = int(5e4)
+# dynamics_model_builder = lambda state_dim: dm.SlotDynamicsModel(state_dim, 
+#             action_dim=5, hid_dim=128, interaction_type='pairwise')
+# torch.manual_seed(0)
+# slot_dynamic_autoencoder = lvm.RSSMLVM(
+#     recognition_model=ssa.RecognitionModel(
+#         num_slots=5, 
+#         interface_dim=32, 
+#         slot_dim=128,
+#         iters=3,
+#         slot_temp=1), 
+#     dynamics_model=dm.RSSM(stoch_dim=128, model=dynamics_model_builder(state_dim=128)),
+#     observation_model=ssa.ObservationModel(indim=128, num_slots=5, scale=10),
+#     mode='dynamics',
+#     device=torch.device('cpu'),
+#     args=args).to(torch.device('cpu'))
+
+
+# monolithic_model.observation_model_model = slot_dynamic_autoencoder.observation_model
+# monolithic_model.transition_model_model = slot_dynamic_autoencoder.transition_model
+# transition_model = slot_dynamic_autoencoder.transition_model
+# observation_model = slot_dynamic_autoencoder.observation_model
+
+
+print('obs model')
+du.visualize_parameters(monolithic_model.observation_model, print)
+print(du.count_parameters(monolithic_model.observation_model))
+print('trans model')
+du.visualize_parameters(monolithic_model.transition_model, print)
+print(du.count_parameters(monolithic_model.transition_model))
+
+
+print('obs model', du.count_parameters(monolithic_model.observation_model))
+print('trans model', du.count_parameters(monolithic_model.transition_model))
+print('dynamics_model', du.count_parameters(monolithic_model.transition_model.dynamics_model))
+print('rssm_head', du.count_parameters(monolithic_model.transition_model.rssm_head))
+
+print('\n')
+
+# assert False
+
+
+
 
 
 # Training (and testing)
@@ -318,9 +442,27 @@ for episode in tqdm(range(metrics['episodes'][-1] + 1, args.episodes + 1), total
         # Draw sequence chunks {(o_t, a_t, r_t+1, terminal_t+1)} ~ D uniformly at random from the dataset (including terminal flags)
         observations, actions, rewards, nonterminals = D.sample(args.batch_size, args.chunk_size) # Transitions start at time t = 0
 
+
+        # print(observations.shape)
+        # torch.save(dict(observations=observations, actions=actions), 'debug_lvm.pt')
+
+        # ckpt = torch.load('debug_lvm.pt')
+        # observations, actions = ckpt['observations'], ckpt['actions']
+
+        # print(reloaded_observations.shape)
+
+
+        # assert False
+
+
+        torch.manual_seed(0)
         beliefs, posterior_states, observation_loss, reward_loss, kl_loss = monolithic_model.main(observations, actions, rewards, nonterminals, free_nats, global_prior, param_list)
 
-        actor_loss, value_loss = monolithic_policy.main(beliefs, posterior_states, model_modules, monolithic_model.transition, monolithic_model.reward)
+
+
+        # assert False
+
+        actor_loss, value_loss = monolithic_policy.main(beliefs, posterior_states, model_modules, monolithic_model.transition_model, monolithic_model.reward)
         
         # # Store (0) observation loss (1) reward loss (2) KL loss (3) actor loss (4) value loss
         losses.append([observation_loss.item(), reward_loss.item(), kl_loss.item(), actor_loss.item(), value_loss.item()])
@@ -384,87 +526,104 @@ for episode in tqdm(range(metrics['episodes'][-1] + 1, args.episodes + 1), total
         test_envs = EnvBatcher(Env, (args.env, args.symbolic_env, args.seed, args.max_episode_length, args.action_repeat, args.bit_depth), {}, args.test_episodes)
         
         with torch.no_grad():
-            observation, total_rewards, video_frames = test_envs.reset(), np.zeros((args.test_episodes, )), []
-            belief, posterior_state, action = torch.zeros(args.test_episodes, args.belief_size, device=args.device), torch.zeros(args.test_episodes, args.state_size, device=args.device), torch.zeros(args.test_episodes, env.action_size, device=args.device)
-            pbar = tqdm(range(args.max_episode_length // args.action_repeat))
-            for t in pbar:
-                belief, posterior_state, action, next_observation, reward, done = update_belief_and_act(args, test_envs, planner, transition_model, encoder, belief, posterior_state, action, observation.to(device=args.device))
-                total_rewards += reward.numpy()
+
+            if args.lvm_only:
+                test_observations = []
+                test_actions = []
+
+                # while not done:
+                #     action = env.sample_random_action()
+                #     next_observation, reward, done = env.step(action)
+                #     D.append(observation, action, reward, done)
+                #     observation = next_observation
+                #     t += 1
+
+                observation, total_rewards, video_frames = test_envs.reset(), np.zeros((args.test_episodes, )), []
+                for t in range(args.max_episode_length):
+                    action = test_envs.sample_random_action()
+                    next_observation, reward, done = test_envs.step(action)
+                    # print(t, done)
+
+                    test_observations.append(observation)
+                    test_actions.append(action)
+                    total_rewards += 0
+
+                    observation = next_observation
+
+                # print(test_observations[0].shape)
+                # assert False
+
+                test_observations = torch.stack(test_observations).to(args.device)
+                test_actions = torch.stack(test_actions).to(args.device)
+
+                test_priors, test_posteriors = monolithic_model.transition_model.forward(itf.InteractiveBatchData(obs=test_observations, act=test_actions))
+                test_beliefs, test_posterior_states = monolithic_model.get_beliefs_and_states(test_posteriors)
+                test_preds = monolithic_model.predict(test_priors, test_posteriors, test_observations.shape)
+
+                # HACK: the last frame is masked out, so let's not count it.
+                for t in range(args.max_episode_length-1):
+                    test_bsize, c, h, w = test_observations[t].shape#[0]
+                    frame = torch.cat([
+                        test_observations[t],  # (B, C, H, W)
+                        test_preds.pbd[t],  # (B, C, H, W)
+                        test_preds.cbd[t].permute((1,0,2,3,4)).reshape(test_bsize*args.num_slots, c, h, w),  # (B, C, H, W)
+                        ], dim=0)
+                    video_frames.append(make_grid(frame, nrow=args.test_episodes).cpu().numpy())  # Decentre
 
 
 
+                # print(test_observations.shape)
+                # print(test_actions.shape)
 
-                if not args.symbolic_env:  # Collect real vs. predicted frames for video
+                # assert False
 
-                    # print(type(env))
-                    # assert False
+            else:
 
-                    # if args.slots:
-                    #     frame = torch.cat([observation, observation_model(belief, posterior_state).cpu()], dim=3)  # decenter
+                #########################
+                observation, total_rewards, video_frames = test_envs.reset(), np.zeros((args.test_episodes, )), []
+                belief, posterior_state, action = torch.zeros(args.test_episodes, args.belief_size, device=args.device), torch.zeros(args.test_episodes, args.state_size, device=args.device), torch.zeros(args.test_episodes, env.action_size, device=args.device)
+                pbar = tqdm(range(args.max_episode_length // args.action_repeat))
+                for t in pbar:
+                    belief, posterior_state, action, next_observation, reward, done = update_belief_and_act(args, test_envs, planner, transition_model, encoder, belief, posterior_state, action, observation.to(device=args.device))
+                    total_rewards += reward.numpy()
 
-                    #     vis_b = belief.shape[0]
-                    #     vis_belief = belief.reshape(vis_b, args.num_slots, -1)
-                    #     vis_state = posterior_state.reshape(vis_b, args.num_slots, -1)
-                    #     vis_x = torch.cat([vis_belief, vis_state], dim=-1)
+                    if not args.symbolic_env:  # Collect real vs. predicted frames for video
+                        if args.slots:
+                            frame = torch.cat([observation, observation_model(belief, posterior_state).cpu()], dim=3)  # decenter
 
-                    #     masked_rgbs, pred = observation_model.decode(vis_x)
-                    #     masked_rgbs, pred = masked_rgbs.cpu(), pred.cpu()
+                            vis_b = belief.shape[0]
+                            vis_belief = belief.reshape(vis_b, args.num_slots, -1)
+                            vis_state = posterior_state.reshape(vis_b, args.num_slots, -1)
+                            vis_x = torch.cat([vis_belief, vis_state], dim=-1)
 
-                    #     c, h, w = observation.shape[-3:]
-                    #     frame = torch.cat([
-                    #         observation,  # (B, C, H, W)
-                    #         pred,  # (B, C, H, W)
-                    #         masked_rgbs.permute((1,0,2,3,4)).reshape(vis_b*args.num_slots, c, h, w)  # (B*K, C, H, W)
-                    #         ], dim=0)  # (B*(1+1+K), C, H, W)
+                            masked_rgbs, pred = observation_model.decode(vis_x)
+                            masked_rgbs, pred = masked_rgbs.cpu(), pred.cpu()
 
-                    #     # video_frames.append(make_grid(frame+0.5, nrow=args.test_episodes).numpy())  # Decentre
+                            c, h, w = observation.shape[-3:]
+                            frame = torch.cat([
+                                observation,  # (B, C, H, W)
+                                pred,  # (B, C, H, W)
+                                masked_rgbs.permute((1,0,2,3,4)).reshape(vis_b*args.num_slots, c, h, w)  # (B*K, C, H, W)
+                                ], dim=0)  # (B*(1+1+K), C, H, W)
 
+                            # video_frames.append(make_grid(frame+0.5, nrow=args.test_episodes).numpy())  # Decentre
 
-                    #     video_frames.append(make_grid(frame, nrow=args.test_episodes).numpy())  # Decentre
+                            if isinstance(env, SimpleEntityEnv):
+                                video_frames.append(make_grid(frame, nrow=args.test_episodes).numpy())  # Decentre
+                            else:
+                                video_frames.append(make_grid(frame+0.5, nrow=args.test_episodes).numpy())  # Decentre
 
-                    # else:
-                    #     video_frames.append(make_grid(torch.cat([observation, observation_model(belief, posterior_state).cpu()], dim=3) + 0.5, nrow=5).numpy())  # Decentre
-
-
-
-
-
-                    if args.slots:
-                        frame = torch.cat([observation, observation_model(belief, posterior_state).cpu()], dim=3)  # decenter
-
-                        vis_b = belief.shape[0]
-                        vis_belief = belief.reshape(vis_b, args.num_slots, -1)
-                        vis_state = posterior_state.reshape(vis_b, args.num_slots, -1)
-                        vis_x = torch.cat([vis_belief, vis_state], dim=-1)
-
-                        masked_rgbs, pred = observation_model.decode(vis_x)
-                        masked_rgbs, pred = masked_rgbs.cpu(), pred.cpu()
-
-                        c, h, w = observation.shape[-3:]
-                        frame = torch.cat([
-                            observation,  # (B, C, H, W)
-                            pred,  # (B, C, H, W)
-                            masked_rgbs.permute((1,0,2,3,4)).reshape(vis_b*args.num_slots, c, h, w)  # (B*K, C, H, W)
-                            ], dim=0)  # (B*(1+1+K), C, H, W)
-
-                        # video_frames.append(make_grid(frame+0.5, nrow=args.test_episodes).numpy())  # Decentre
-
-                        if isinstance(env, SimpleEntityEnv):
-                            video_frames.append(make_grid(frame, nrow=args.test_episodes).numpy())  # Decentre
                         else:
-                            video_frames.append(make_grid(frame+0.5, nrow=args.test_episodes).numpy())  # Decentre
-
-                    else:
-                        if isinstance(env, SimpleEntityEnv):
-                            video_frames.append(make_grid(torch.cat([observation, observation_model(belief, posterior_state).cpu()], dim=3), nrow=5).numpy())  # Decentre
-                        else:
-                            video_frames.append(make_grid(torch.cat([observation, observation_model(belief, posterior_state).cpu()], dim=3) + 0.5, nrow=5).numpy())  # Decentre
+                            if isinstance(env, SimpleEntityEnv):
+                                video_frames.append(make_grid(torch.cat([observation, observation_model(belief, posterior_state).cpu()], dim=3), nrow=5).numpy())  # Decentre
+                            else:
+                                video_frames.append(make_grid(torch.cat([observation, observation_model(belief, posterior_state).cpu()], dim=3) + 0.5, nrow=5).numpy())  # Decentre
 
 
-                observation = next_observation
-                if done.sum().item() == args.test_episodes:
-                    pbar.close()
-                    break
+                    observation = next_observation
+                    if done.sum().item() == args.test_episodes:
+                        pbar.close()
+                        break
 
                 #########################
         

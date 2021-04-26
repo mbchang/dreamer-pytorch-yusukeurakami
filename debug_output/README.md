@@ -81,4 +81,16 @@ CUDA_VISIBLE_DEVICES=6 DEVICE=:0 env PYTORCH_JIT=0 python modular_main.py --algo
 
 
 4/24/21
-CUDA_VISIBLE_DEVICES=0 DEVICE=:0 env PYTORCH_JIT=0 python modular_main.py --algo dreamer --env simple_box4_separate --action-repeat 2 --id 4_24_21_slots_lvm_only --model_learning-rate 5e-5 --actor_learning-rate 0 --value_learning-rate 0 --max-episode-length 100 --chunk-size 2 --seed-episodes 10000 --episodes 1000000 --slots --num_slots 5 --batch-size 10
+(dreamer3)
+CUDA_VISIBLE_DEVICES=0 DEVICE=:0 env PYTORCH_JIT=0 python modular_main.py --algo dreamer --env simple_box4_separate --action-repeat 2 --id 4_24_21_slots_lvm_only --model_learning-rate 5e-5 --actor_learning-rate 0 --value_learning-rate 0 --max-episode-length 100 --chunk-size 2 --seed-episodes 10000 --episodes 1000000 --slots --num_slots 5 --batch-size 10 --lvm_only
+
+(debug_lvm local)
+env PYTORCH_JIT=0 python modular_main.py --algo dreamer --env simple_box4_separate --action-repeat 1 --id debug0_lvm0nly --episodes 10 --batch-size 8 --chunk-size 4 --collect-interval 2 --global-kl-beta 1e-1 --overshooting-kl-beta 1e-1 --overshooting-reward-scale 1e-1 --learning-rate-schedule 10 --max-episode-length 20 --test-interval 1 --slots --num_slots 5 --belief-size 640 --state-size 640 --lvm_only
+
+4/26/21
+(lvm_only should work now: action_repeat 1, chunk_size 4, max-episode-length 20 test-interval 5, belief_size 640, state_size 640)
+
+(dreamer4)
+CUDA_VISIBLE_DEVICES=0 DEVICE=:0 env PYTORCH_JIT=0 python modular_main.py --algo dreamer --env simple_box4_separate --action-repeat 1 --id 4_26_21_slots_lvm_only --model_learning-rate 1e-4 --actor_learning-rate 0 --value_learning-rate 0 --max-episode-length 20 --chunk-size 4 --seed-episodes 10000 --episodes 1000000 --slots --num_slots 5 --batch-size 16 --belief-size 640 --state-size 640 --test-interval 5 --lvm_only
+
+

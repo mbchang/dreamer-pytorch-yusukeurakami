@@ -227,6 +227,9 @@ class SimpleEntityEnv():
 			state, reward_k, done, _ = self._env.step([action])
 			reward += reward_k[0]
 			self.t += 1  # Increment internal timer
+
+			# print('t', self.t, 'max_episode_length', self.max_episode_length)
+
 			done = done[0] or self.t == self.max_episode_length
 			if done:
 				break
@@ -277,6 +280,36 @@ def Env(env, symbolic, seed, max_episode_length, action_repeat, bit_depth):
 		return SimpleEntityEnv(env, symbolic, seed, max_episode_length, action_repeat, bit_depth)
 
 
+# # Wrapper for batching environments together
+# class EnvBatcher():
+# 	def __init__(self, env_class, env_args, env_kwargs, n):
+# 		self.n = n
+# 		self.envs = [env_class(*env_args, **env_kwargs) for _ in range(n)]
+# 		self.dones = [True] * n
+
+# 	# Resets every environment and returns observation
+# 	def reset(self):
+# 		observations = [env.reset() for env in self.envs]
+# 		self.dones = [False] * self.n
+# 		return torch.cat(observations)
+
+#  # Steps/resets every environment and returns (observation, reward, done)
+# 	def step(self, actions):
+# 		done_mask = torch.nonzero(torch.tensor(self.dones))[:, 0]  # Done mask to blank out observations and zero rewards for previously terminated environments
+# 		observations, rewards, dones = zip(*[env.step(action) for env, action in zip(self.envs, actions)])
+# 		dones = [d or prev_d for d, prev_d in zip(dones, self.dones)]  # Env should remain terminated if previously terminated
+# 		self.dones = dones
+# 		observations, rewards, dones = torch.cat(observations), torch.tensor(rewards, dtype=torch.float32), torch.tensor(dones, dtype=torch.uint8)
+# 		observations[done_mask] = 0
+# 		rewards[done_mask] = 0
+# 		return observations, rewards, dones
+
+# 	def close(self):
+# 		[env.close() for env in self.envs]
+
+
+
+
 # Wrapper for batching environments together
 class EnvBatcher():
 	def __init__(self, env_class, env_args, env_kwargs, n):
@@ -289,6 +322,10 @@ class EnvBatcher():
 		observations = [env.reset() for env in self.envs]
 		self.dones = [False] * self.n
 		return torch.cat(observations)
+
+	def sample_random_action(self):
+		actions = torch.stack([env.sample_random_action() for env in self.envs])
+		return actions
 
  # Steps/resets every environment and returns (observation, reward, done)
 	def step(self, actions):

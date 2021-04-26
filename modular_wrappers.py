@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -7,7 +8,9 @@ from torch.distributions.kl import kl_divergence
 from models import bottle
 from utils import imagine_ahead, lambda_return, FreezeParameters
 
+import slots.debugging_utils as du
 import slots.interfaces as itf
+import slots.training_utils as tu
 
 
 # class MonolithicTransitionWrapper(nn.Module):
@@ -23,8 +26,8 @@ class MonolithicModelWrapper(nn.Module):
     def __init__(self, encoder, transition, observation, reward, optimizer, args):
         nn.Module.__init__(self)
         self.encoder = encoder
-        self.transition = transition
-        self.observation = observation
+        self.transition_model = transition
+        self.observation_model = observation
         self.reward = reward
         self.optimizer = optimizer
         self.args = args  # later this should be changed to model_self.args
@@ -32,6 +35,10 @@ class MonolithicModelWrapper(nn.Module):
     def main(self, observations, actions, rewards, nonterminals, free_nats, global_prior, param_list):
 
         beliefs, prior_states, prior, posterior_states, posterior = self.generate_trace(observations, actions, nonterminals)
+
+        # print(beliefs.shape)
+        # print(posterior_states.shape)
+        # assert False
 
         observation_loss, reward_loss, kl_loss = self.compute_feedback(observations, rewards, free_nats, global_prior, beliefs, prior, posterior_states, posterior)
 
@@ -57,10 +64,10 @@ class MonolithicModelWrapper(nn.Module):
 
     def generate_trace(self, observations, actions, nonterminals):
         # Create initial belief and state for time t = 0
-        init_belief, init_state = self.transition.initial_step(observation=observations[0], device=self.args.device)
+        init_belief, init_state = self.transition_model.initial_step(observation=observations[0], device=self.args.device)
 
         # Update belief/state using posterior from previous belief/state, previous action and current observation (over entire sequence at once)
-        beliefs, prior_states, prior, posterior_states, posterior = self.transition.filter(
+        beliefs, prior_states, prior, posterior_states, posterior = self.transition_model.filter(
                 prev_state=init_state, 
                 actions=actions[:-1], 
                 prev_belief=init_belief, 
@@ -91,7 +98,7 @@ class MonolithicModelWrapper(nn.Module):
         overshooting_vars = itf.Overshooting(*zip(*overshooting_vars))
         # Update belief/state using prior from previous belief/state and previous action (over entire sequence at once)
         # just added ovsht_ as a prefix
-        ovsht_beliefs, ovsht_prior_states, ovsht_prior = self.transition.generate(
+        ovsht_beliefs, ovsht_prior_states, ovsht_prior = self.transition_model.generate(
             prev_state=torch.cat(overshooting_vars.prior_states, dim=0), 
             actions=torch.cat(overshooting_vars.actions, dim=1), 
             prev_belief=torch.cat(overshooting_vars.beliefs, dim=0), 
@@ -110,10 +117,10 @@ class MonolithicModelWrapper(nn.Module):
     def compute_feedback(self, observations, rewards, free_nats, global_prior, beliefs, prior, posterior_states, posterior):
         # Calculate observation likelihood, reward likelihood and KL losses (for t = 0 only for latent overshooting); sum over final dims, average over batch and time (original implementation, though paper seems to miss 1/T scaling?)
         if self.args.worldmodel_LogProbLoss:
-            observation_dist = Normal(bottle(self.observation, (beliefs, posterior_states)), 1)
+            observation_dist = Normal(bottle(self.observation_model, (beliefs, posterior_states)), 1)
             observation_loss = -observation_dist.log_prob(observations[1:]).sum(dim=2 if self.args.symbolic_env else (2, 3, 4)).mean(dim=(0, 1))
         else: 
-            observation_loss = F.mse_loss(bottle(self.observation, (beliefs, posterior_states)), observations[1:], reduction='none').sum(dim=2 if self.args.symbolic_env else (2, 3, 4)).mean(dim=(0, 1))
+            observation_loss = F.mse_loss(bottle(self.observation_model, (beliefs, posterior_states)), observations[1:], reduction='none').sum(dim=2 if self.args.symbolic_env else (2, 3, 4)).mean(dim=(0, 1))
 
         if self.args.worldmodel_LogProbLoss:
             reward_dist = Normal(bottle(self.reward, (beliefs, posterior_states)),1)
@@ -153,6 +160,394 @@ class MonolithicModelWrapper(nn.Module):
         model_loss.backward()
         nn.utils.clip_grad_norm_(param_list, self.args.grad_clip_norm, norm_type=2)
         self.optimizer.step()
+
+
+
+
+
+
+class SlotsModelWrapper(nn.Module):
+    def __init__(self, encoder, transition, observation, reward, optimizer, args):
+        nn.Module.__init__(self)
+        self.encoder = encoder
+        self.transition_model = transition
+        self.observation_model = observation
+        self.reward = reward
+        self.optimizer = optimizer
+        self.args = args  # later this should be changed to model_self.args
+
+        self.optim_scheduler = torch.optim.lr_scheduler.StepLR(
+            self.optimizer, step_size=args.lr_decay_every, gamma=args.lr_decay_gamma)
+        self.dkl_scheduler = tu.GeometricScheduler(initial_value=args.kl_coeff, final_value=args.dkl_coeff, max_steps=args.dkl_steps)
+        self.i = 0
+
+
+    def get_beliefs_and_states(self, posteriors):
+        # beliefs = torch.stack([prior.belief for prior in priors])  # or what about prior?
+        beliefs = torch.stack([posterior.belief for posterior in posteriors])
+        posterior_states = torch.stack([posterior.sample for posterior in posteriors])
+
+
+        # beliefs = 
+
+
+
+        return beliefs, posterior_states
+
+
+
+        # # beliefs = 
+        # pass
+
+    def main(self, observations, actions, rewards, nonterminals, free_nats, global_prior, param_list):
+
+        # beliefs, prior_states, prior, posterior_states, posterior = self.generate_trace(observations, actions, nonterminals)
+
+
+        # print('prior belief', beliefs[-1], beliefs[-1].shape)
+        # print('blah')
+
+        batch = itf.InteractiveBatchData(obs=observations, act=actions)
+        torch.manual_seed(0)
+        np.random.seed(0)
+
+
+        # print('observations', observations.norm(), observations.shape)
+        # print('actions', actions.norm(), actions.shape)
+        # print('observations[-1]', observations[-1].norm())
+        # print('actions[-1]', actions[-1].norm())
+
+
+        priors, posteriors = self.transition_model.forward(batch)
+        # beliefs = 
+
+
+        # now need to construct beliefs, prior, posterior_states, posterior
+
+        # print('posterior belief', posteriors[-1].belief, posteriors[-1].belief.shape)
+        # print('posterior sample', posteriors[-1].sample, posteriors[-1].sample.shape)
+        # assert False
+
+        beliefs, posterior_states = self.get_beliefs_and_states(posteriors)
+
+
+        # print(beliefs.shape)
+        # print(posterior_states.shape)
+        # assert False
+
+
+        observation_loss, reward_loss, kl_loss = self.compute_feedback(observations, rewards, free_nats, global_prior, beliefs, priors, posterior_states, posteriors)
+
+        # assert False
+
+
+        # Calculate latent overshooting objective for t > 0
+        if not self.args.lvm_only:
+            if self.args.overshooting_kl_beta != 0:
+
+                overshooting_vars, ovsht_beliefs, ovsht_prior_states, ovsht_prior, ovsht_posterior = self.generate_overshooting_trace(actions, nonterminals, rewards, beliefs, prior_states, posterior)
+
+                reward_loss, kl_loss = self.compute_overshooting_feedback(overshooting_vars, ovsht_beliefs, ovsht_prior_states, ovsht_prior, ovsht_posterior, free_nats, reward_loss, kl_loss)
+
+        # Apply linearly ramping learning rate schedule
+        if self.args.learning_rate_schedule != 0:
+            for group in self.optimizer.param_groups:
+                group['lr'] = min(group['lr'] + self.args.model_learning_rate / self.args.learning_rate_schedule, self.args.model_learning_rate)
+
+        model_loss = observation_loss + reward_loss + kl_loss
+
+        self.update(model_loss, param_list)
+
+        return beliefs, posterior_states, observation_loss, reward_loss, kl_loss
+
+    def generate_trace(self, observations, actions, nonterminals):
+        # Create initial belief and state for time t = 0
+        init_belief, init_state = self.transition_model.initial_step(observation=observations[0], device=self.args.device)
+
+        # Update belief/state using posterior from previous belief/state, previous action and current observation (over entire sequence at once)
+        beliefs, prior_states, prior, posterior_states, posterior = self.transition_model.filter(
+                prev_state=init_state, 
+                actions=actions[:-1], 
+                prev_belief=init_belief, 
+                observations=bottle(self.encoder, (observations[1:], )), 
+                nonterminals=nonterminals[:-1])
+
+        return beliefs, prior_states, prior, posterior_states, posterior
+
+    def generate_overshooting_trace(self, actions, nonterminals, rewards, beliefs, prior_states, posterior):
+        overshooting_vars = []  # Collect variables for overshooting to process in batch
+        for t in range(1, self.args.chunk_size - 1):
+            d = min(t + self.args.overshooting_distance, self.args.chunk_size - 1)  # Overshooting distance
+            t_, d_ = t - 1, d - 1  # Use t_ and d_ to deal with different time indexing for latent states
+            seq_pad = (0, 0, 0, 0, 0, t - d + self.args.overshooting_distance)  # Calculate sequence padding so overshooting terms can be calculated in one batch
+            # Store (0) actions, (1) nonterminals, (2) rewards, (3) beliefs, (4) prior states, (5) posterior means, (6) posterior standard deviations and (7) sequence masks
+            overshooting_vars.append(
+                itf.Overshooting(
+                    actions=F.pad(actions[t:d], seq_pad), 
+                    nonterminals=F.pad(nonterminals[t:d], seq_pad), 
+                    rewards=F.pad(rewards[t:d], seq_pad[2:]), 
+                    beliefs=beliefs[t_], 
+                    prior_states=prior_states[t_], 
+                    posterior_means=F.pad(posterior.loc[t_ + 1:d_ + 1].detach(), seq_pad), 
+                    posterior_std_devs=F.pad(posterior.scale[t_ + 1:d_ + 1].detach(), seq_pad, value=1), 
+                    masks=F.pad(torch.ones(d - t, self.args.batch_size, self.args.state_size, device=self.args.device), seq_pad)
+                ))  # Posterior standard deviations must be padded with > 0 to prevent infinite KL divergences
+
+        overshooting_vars = itf.Overshooting(*zip(*overshooting_vars))
+        # Update belief/state using prior from previous belief/state and previous action (over entire sequence at once)
+        # just added ovsht_ as a prefix
+        ovsht_beliefs, ovsht_prior_states, ovsht_prior = self.transition_model.generate(
+            prev_state=torch.cat(overshooting_vars.prior_states, dim=0), 
+            actions=torch.cat(overshooting_vars.actions, dim=1), 
+            prev_belief=torch.cat(overshooting_vars.beliefs, dim=0), 
+            observations=None, 
+            nonterminals=torch.cat(overshooting_vars.nonterminals, dim=1))
+
+        ### TODO ###
+        ovsht_posterior = Normal(torch.cat(overshooting_vars.posterior_means, dim=1), torch.cat(overshooting_vars.posterior_std_devs, dim=1))
+        ############
+
+        return overshooting_vars, ovsht_beliefs, ovsht_prior_states, ovsht_prior, ovsht_posterior
+
+
+
+
+    #############################################################################################
+
+
+
+
+
+    def get_obs_input(self, rssm_state):
+        if np.random.uniform() < self.args.grndrate:
+            obs_input = rssm_state.sample
+        else:
+            obs_input = rssm_state.sample.detach()
+        return obs_input
+
+
+    # later will get rid of the batch argument
+    def predict(self, priors, posteriors, obs_shape):
+        # t, b, c, h, w = batch.obs.shape
+        t, b, c, h, w = obs_shape
+        k = self.transition_model.recognition_model.slot_attn.num_slots
+
+        preds = itf.DSAPred(
+            pbd=torch.empty(t, b, c, h, w).to(self.args.device),
+            pad=torch.empty(t-1, b, c, h, w).to(self.args.device),
+            cbd=torch.empty(t, b, k, c, h, w).to(self.args.device),
+            cad=torch.empty(t-1, b, k, c, h, w).to(self.args.device))
+
+        for step in range(len(priors)):
+            preds.cbd[step], preds.pbd[step] = self.decode(posteriors[step])
+            if step < t - 1:
+                preds.cad[step], preds.pad[step] = self.decode(priors[step+1])
+
+        # maybe we should actually be computing the losses here too. 
+        return preds
+
+
+
+
+    def kl(self, posterior, prior):
+        return kl_divergence(posterior, prior)/self.transition_model.recognition_model.slot_dim
+
+    def decode(self, rssm_state):
+        return self.observation_model.decode(self.get_obs_input(rssm_state))
+
+
+
+
+
+
+
+
+
+    def compute_filtering_feedback(self, preds, priors, posteriors, obs, args):
+        t, b, c, h, w = obs.shape
+        k = self.transition_model.recognition_model.slot_attn.num_slots
+
+        kl = torch.empty(t, b, k).to(self.args.device)
+        for step in range(len(priors)):
+            kl[step] = self.kl(posteriors[step].dist, priors[step].dist)
+
+        initial_kl = kl[0].mean()
+        dynamic_kl = kl[1:].mean()
+
+        loss_bd = F.mse_loss(preds.pbd, obs)
+        loss_ad = F.mse_loss(preds.pad, obs[1:])
+        dkl_coeff = self.dkl_scheduler.get_value()
+
+        loss = loss_bd + loss_ad + args.kl_coeff*initial_kl + dkl_coeff*dynamic_kl**args.dkl_pwr # note that there are now twice as many recon loss terms as kl, so maybe kl_coeff needs to be double what it usually is in static case?
+
+        if self.args.observation_consistency:
+            loss_consistency = F.mse_loss(preds.cad, preds.cbd[1:])
+            loss += loss_consistency
+
+        loss_trace = itf.LossTrace(
+            kl=kl,
+            initial_kl=initial_kl, 
+            dynamic_kl=dynamic_kl, 
+            loss_bd=loss_bd, 
+            loss_ad=loss_ad,
+            loss_consistency=loss_consistency)
+        return loss, loss_trace, dkl_coeff
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    #############################################################################################
+
+
+
+    def compute_feedback(self, observations, rewards, free_nats, global_prior, beliefs, prior, posterior_states, posterior):
+        # Calculate observation likelihood, reward likelihood and KL losses (for t = 0 only for latent overshooting); sum over final dims, average over batch and time (original implementation, though paper seems to miss 1/T scaling?)
+        if self.args.worldmodel_LogProbLoss:
+
+            raise NotImplementedError
+
+            observation_dist = Normal(bottle(self.observation_model, (beliefs, posterior_states)), 1)
+
+            # print(observation_dist.loc)
+            # assert False
+
+
+
+
+
+            observation_loss = -observation_dist.log_prob(observations[1:]).sum(dim=2 if self.args.symbolic_env else (2, 3, 4)).mean(dim=(0, 1))
+        else: 
+
+            # pred = bottle(self.observation_model, (beliefs, posterior_states))
+
+            # print('pred', pred, pred.shape)
+            # # assert False
+            # # print(observations[1:].shape)
+            # # assert False
+
+            # observation_loss = F.mse_loss(pred, observations, reduction='none').sum(dim=2 if self.args.symbolic_env else (2, 3, 4)).mean(dim=(0, 1))  # changed observations[1:] to observations!
+
+            # print('bd loss', observation_loss)
+            # assert False
+
+            # print(observations.shape)
+            # assert False
+            preds = self.predict(prior, posterior, observations.shape)
+
+            # print(preds)
+            # assert False
+            loss, loss_trace, dkl_coeff = self.compute_filtering_feedback(preds, prior, posterior, observations, self.args)
+
+            # ok loss and loss_trace are the same.
+
+            # print('bd loss', loss_trace.loss_bd)
+            # print('loss', loss)
+            # print('loss_trace', loss_trace)
+            # assert False
+
+            # VERY HACKY.
+            # I am currently packing everything in "loss" (obseravtion loss, kl loss, consistency loss, etc) into "observation_loss". So even though the kl loss is actually in "loss", since I am putting kl loss in "observation_loss", I will make "kl_loss" 0.
+            kl_loss = torch.zeros([1]).to(observations.device)
+            observation_loss = loss
+
+
+        if self.args.lvm_only:
+            reward_loss = torch.zeros([1]).to(observations.device)
+
+
+
+        else:
+
+
+            if self.args.worldmodel_LogProbLoss:
+                reward_dist = Normal(bottle(self.reward, (beliefs, posterior_states)),1)
+                reward_loss = -reward_dist.log_prob(rewards[:-1]).mean(dim=(0, 1))
+            else:
+                reward_loss = F.mse_loss(bottle(self.reward, (beliefs, posterior_states)), rewards[:-1], reduction='none').mean(dim=(0,1))
+
+            # transition loss
+            div = kl_divergence(posterior, prior).sum(dim=2)
+            kl_loss = torch.max(div, free_nats).mean(dim=(0, 1))  # Note that normalisation by overshooting distance and weighting by overshooting distance cancel out
+            if self.args.global_kl_beta != 0:
+                kl_loss += self.args.global_kl_beta * kl_divergence(posterior, global_prior).sum(dim=2).mean(dim=(0, 1))
+
+        # print(reward_loss)
+
+        # if self.args.lvm_only:
+        #     reward_loss *= 0
+        # assert False
+
+        return observation_loss, reward_loss, kl_loss
+
+    def compute_overshooting_feedback(self, overshooting_vars, ovsht_beliefs, ovsht_prior_states, ovsht_prior, ovsht_posterior, free_nats, reward_loss, kl_loss):
+        seq_mask = torch.cat(overshooting_vars.masks, dim=1)
+        # Calculate overshooting KL loss with sequence mask
+        kl_loss += (1 / self.args.overshooting_distance) * self.args.overshooting_kl_beta * torch.max((kl_divergence(ovsht_posterior, ovsht_prior) * seq_mask).sum(dim=2), free_nats).mean(dim=(0, 1)) * (self.args.chunk_size - 1)  # Update KL loss (compensating for extra average over each overshooting/open loop sequence) 
+
+        # Calculate overshooting reward prediction loss with sequence mask
+        if self.args.overshooting_reward_scale != 0: 
+            reward_loss += (1 / self.args.overshooting_distance) * self.args.overshooting_reward_scale * F.mse_loss(bottle(self.reward, (ovsht_beliefs, ovsht_prior_states)) * seq_mask[:, :, 0], torch.cat(overshooting_vars.rewards, dim=1), reduction='none').mean(dim=(0, 1)) * (self.args.chunk_size - 1)  # Update reward loss (compensating for extra average over each overshooting/open loop sequence) 
+
+        return reward_loss, kl_loss
+
+
+
+
+    # def update(self, model_loss, param_list):
+    #     # Update model parameters
+    #     self.optimizer.zero_grad()
+    #     model_loss.backward()
+    #     nn.utils.clip_grad_norm_(param_list, self.args.grad_clip_norm, norm_type=2)
+    #     self.optimizer.step()
+
+    def update(self, model_loss, param_list):
+        # Update model parameters
+        self.optimizer.zero_grad()
+        model_loss.backward()
+        # nn.utils.clip_grad_norm_(param_list, self.args.grad_clip_norm, norm_type=2)
+        self.optimizer.step()
+
+    # def update(self, loss, i, pfunc):
+    #     self.optimizer.zero_grad()
+    #     loss.backward()
+    #     self.optimizer.step()
+        self.dkl_scheduler.step()
+
+        if self.i >= self.args.lr_decay_after:
+            before_lr = self.optimizer.state_dict()['param_groups'][0]['lr']
+            self.optim_scheduler.step()
+            after_lr = self.optimizer.state_dict()['param_groups'][0]['lr']
+            if before_lr != after_lr:
+                pfunc('Batch: {}\tLR Previously: {}\tLR Now: {}'.format(i, before_lr, after_lr))
+        self.i += 1
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 # class MonolithicActorWrapper(nn.Module):
 #     pass
