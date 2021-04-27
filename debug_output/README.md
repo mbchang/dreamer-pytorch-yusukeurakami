@@ -113,3 +113,25 @@ CUDA_VISIBLE_DEVICES=2 DEVICE=:0 env PYTORCH_JIT=0 python modular_main.py --algo
 
 (dreamer5) --> sanity check that monolithic dreamer still works.
 CUDA_VISIBLE_DEVICES=4 DEVICE=:0 env PYTORCH_JIT=0 python modular_main.py --algo dreamer --env simple_box4_separate --action-repeat 2 --id 4_27_21_modular_monolithic_balls --max-episode-length 100 --seed-episodes 1000 --episodes 1000000
+
+(dreamer6) --> includes reward loss, detached latents
+CUDA_VISIBLE_DEVICES=0 DEVICE=:0 env PYTORCH_JIT=0 python modular_main.py --algo dreamer --env simple_box4_separate --action-repeat 1 --id 4_27_21_reward_detached --model_learning-rate 5e-5 --actor_learning-rate 0 --value_learning-rate 0 --max-episode-length 20 --chunk-size 4 --seed-episodes 10000 --episodes 1000000 --slots --num_slots 5 --batch-size 16 --belief-size 640 --state-size 640 --test-interval 5 --lvm_only --detach_latents_for_reward
+
+(dreamer7) --> includes reward loss, un-detached latents
+CUDA_VISIBLE_DEVICES=0 DEVICE=:0 env PYTORCH_JIT=0 python modular_main.py --algo dreamer --env simple_box4_separate --action-repeat 1 --id 4_27_21_reward_undetached --model_learning-rate 5e-5 --actor_learning-rate 0 --value_learning-rate 0 --max-episode-length 20 --chunk-size 4 --seed-episodes 10000 --episodes 1000000 --slots --num_slots 5 --batch-size 16 --belief-size 640 --state-size 640 --test-interval 5 --lvm_only
+
+(dreamer8) --> includes reward loss, detached latents
+CUDA_VISIBLE_DEVICES=0 DEVICE=:0 env PYTORCH_JIT=0 python modular_main.py --algo dreamer --env simple_box4_separate --action-repeat 1 --id 4_27_21_reward_detached_lr8e-5 --model_learning-rate 8e-5 --actor_learning-rate 0 --value_learning-rate 0 --max-episode-length 20 --chunk-size 4 --seed-episodes 10000 --episodes 1000000 --slots --num_slots 5 --batch-size 16 --belief-size 640 --state-size 640 --test-interval 5 --lvm_only --detach_latents_for_reward
+
+(dreamer9) --> includes reward loss, un-detached latents
+CUDA_VISIBLE_DEVICES=2 DEVICE=:0 env PYTORCH_JIT=0 python modular_main.py --algo dreamer --env simple_box4_separate --action-repeat 1 --id 4_27_21_reward_undetached_lr8e-5 --model_learning-rate 8e-5 --actor_learning-rate 0 --value_learning-rate 0 --max-episode-length 20 --chunk-size 4 --seed-episodes 10000 --episodes 1000000 --slots --num_slots 5 --batch-size 16 --belief-size 640 --state-size 640 --test-interval 5 --lvm_only
+
+
+
+
+
+
+
+
+
+

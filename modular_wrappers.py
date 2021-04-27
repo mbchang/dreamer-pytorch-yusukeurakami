@@ -11,6 +11,7 @@ from utils import imagine_ahead, lambda_return, FreezeParameters
 import slots.debugging_utils as du
 import slots.interfaces as itf
 import slots.training_utils as tu
+import slots.latent_variable_model as lvm
 
 
 # class MonolithicTransitionWrapper(nn.Module):
@@ -312,8 +313,8 @@ class SlotsModelWrapper(nn.Module):
 
 
 
-    def kl(self, posterior, prior):
-        return kl_divergence(posterior, prior)/self.transition_model.recognition_model.slot_dim
+    # def kl(self, posterior, prior):
+    #     return kl_divergence(posterior, prior)/self.transition_model.recognition_model.slot_dim
 
     def decode(self, rssm_state):
         return self.observation_model.decode(self.get_obs_input(rssm_state))
@@ -324,7 +325,8 @@ class SlotsModelWrapper(nn.Module):
 
         kl = torch.empty(t, b, k).to(self.args.device)
         for step in range(len(priors)):
-            kl[step] = self.kl(posteriors[step].dist, priors[step].dist)
+            # kl[step] = self.kl(posteriors[step].dist, priors[step].dist)
+            kl[step] = lvm.averaged_kl(posteriors[step].dist, priors[step].dist)
 
         initial_kl = kl[0].mean()
         dynamic_kl = kl[1:].mean()
@@ -395,15 +397,21 @@ class SlotsModelWrapper(nn.Module):
         if self.args.lvm_only:
             # reward_loss = torch.zeros([1]).to(observations.device)
 
-            reward_loss = F.mse_loss(bottle(self.reward, 
+            if self.args.detach_latents_for_reward:
+                reward_loss = F.mse_loss(bottle(self.reward, 
+                    (beliefs[:-1], posterior_states[:-1])), 
+                    # (beliefs[:-1].detach(), posterior_states[:-1].detach())), 
+                    rewards[:-1], reduction='none').mean(dim=(0,1))  # NOTE THIS IS DIFFERENT FROM MONOLITHIC BECAUSE WE ARE TAKING [:-1] fomr beliefs and posterior_states!
+
+            else:
+                reward_loss = F.mse_loss(bottle(self.reward, 
+                    # (beliefs[:-1], posterior_states[:-1])), 
+                    (beliefs[:-1].detach(), posterior_states[:-1].detach())), 
+                    rewards[:-1], reduction='none').mean(dim=(0,1))  # NOTE THIS IS DIFFERENT FROM MONOLITHIC BECAUSE WE ARE TAKING [:-1] fomr beliefs and posterior_states!
 
 
 
-                # (beliefs[:-1], posterior_states[:-1])), 
-                (beliefs[:-1].detach(), posterior_states[:-1].detach())), 
 
-
-                rewards[:-1], reduction='none').mean(dim=(0,1))  # NOTE THIS IS DIFFERENT FROM MONOLITHIC BECAUSE WE ARE TAKING [:-1] fomr beliefs and posterior_states!
 
             log_string += '\n\tReward Loss:\t{}'.format(reward_loss.item())
             print(log_string)

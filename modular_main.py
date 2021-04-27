@@ -92,6 +92,7 @@ parser.add_argument('--render', action='store_true', help='Render environment')
 parser.add_argument('--slots', action='store_true', help='object-centric')
 parser.add_argument('--num_slots', type=int, default=1)
 parser.add_argument('--lvm_only', action='store_true', help='turn off loss for reward, actor, value')
+parser.add_argument('--detach_latents_for_reward', action='store_true')
 
 args = parser.parse_args()
 args.overshooting_distance = min(args.chunk_size, args.overshooting_distance)  # Overshooting distance cannot be greater than chunk size
@@ -171,7 +172,7 @@ if args.slots:
     args.observation_consistency = True
     args.dkl_pwr = 1
     args.grndrate = 1
-    args.lr = 1e-4
+    args.lr = args.model_learning_rate
     args.lr_decay_every = int(1e4)
     args.lr_decay_gamma = 0.95
     args.kl_coeff = 1e-4
