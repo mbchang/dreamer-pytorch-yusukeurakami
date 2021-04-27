@@ -202,8 +202,9 @@ class SlotsModelWrapper(nn.Module):
         priors, posteriors = self.transition_model.forward(batch)
 
         beliefs, posterior_states = self.get_beliefs_and_states(posteriors)
+        preds = self.predict(priors, posteriors, observations.shape)
 
-        observation_loss, reward_loss, kl_loss = self.compute_feedback(observations, rewards, free_nats, global_prior, beliefs, priors, posterior_states, posteriors)
+        observation_loss, reward_loss, kl_loss = self.compute_feedback(observations, rewards, free_nats, global_prior, beliefs, priors, posterior_states, posteriors, preds)
 
         # Calculate latent overshooting objective for t > 0
         if not self.args.lvm_only:
@@ -318,6 +319,38 @@ class SlotsModelWrapper(nn.Module):
         return self.observation_model.decode(self.get_obs_input(rssm_state))
 
 
+    # def compute_filtering_feedback(self, preds, priors, posteriors, obs, args):
+    #     t, b, c, h, w = obs.shape
+    #     k = self.transition_model.recognition_model.slot_attn.num_slots
+
+    #     kl = torch.empty(t, b, k).to(self.args.device)
+    #     for step in range(len(priors)):
+    #         kl[step] = self.kl(posteriors[step].dist, priors[step].dist)
+
+    #     initial_kl = kl[0].mean()
+    #     dynamic_kl = kl[1:].mean()
+
+    #     loss_bd = F.mse_loss(preds.pbd, obs)
+    #     loss_ad = F.mse_loss(preds.pad, obs[1:])
+    #     dkl_coeff = self.dkl_scheduler.get_value()
+
+    #     loss = loss_bd + loss_ad + args.kl_coeff*initial_kl + dkl_coeff*dynamic_kl**args.dkl_pwr # note that there are now twice as many recon loss terms as kl, so maybe kl_coeff needs to be double what it usually is in static case?
+
+    #     if self.args.observation_consistency:
+    #         loss_consistency = F.mse_loss(preds.cad, preds.cbd[1:])
+    #         loss += loss_consistency
+
+    #     loss_trace = itf.LossTrace(
+    #         kl=kl,
+    #         initial_kl=initial_kl, 
+    #         dynamic_kl=dynamic_kl, 
+    #         loss_bd=loss_bd, 
+    #         loss_ad=loss_ad,
+    #         loss_consistency=loss_consistency)
+    #     return loss, loss_trace, dkl_coeff
+
+
+
     def compute_filtering_feedback(self, preds, priors, posteriors, obs, args):
         t, b, c, h, w = obs.shape
         k = self.transition_model.recognition_model.slot_attn.num_slots
@@ -340,6 +373,7 @@ class SlotsModelWrapper(nn.Module):
             loss += loss_consistency
 
         loss_trace = itf.LossTrace(
+            loss=loss,
             kl=kl,
             initial_kl=initial_kl, 
             dynamic_kl=dynamic_kl, 
@@ -352,12 +386,11 @@ class SlotsModelWrapper(nn.Module):
 
 
 
-
     #############################################################################################
 
 
 
-    def compute_feedback(self, observations, rewards, free_nats, global_prior, beliefs, prior, posterior_states, posterior):
+    def compute_feedback(self, observations, rewards, free_nats, global_prior, beliefs, prior, posterior_states, posterior, preds):
         # Calculate observation likelihood, reward likelihood and KL losses (for t = 0 only for latent overshooting); sum over final dims, average over batch and time (original implementation, though paper seems to miss 1/T scaling?)
         if self.args.worldmodel_LogProbLoss:
 
@@ -367,7 +400,7 @@ class SlotsModelWrapper(nn.Module):
 
             observation_loss = -observation_dist.log_prob(observations[1:]).sum(dim=2 if self.args.symbolic_env else (2, 3, 4)).mean(dim=(0, 1))
         else: 
-            preds = self.predict(prior, posterior, observations.shape)
+            # preds = self.predict(prior, posterior, observations.shape)
             loss, loss_trace, dkl_coeff = self.compute_filtering_feedback(preds, prior, posterior, observations, self.args)
 
             # VERY HACKY.
