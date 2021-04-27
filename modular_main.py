@@ -471,6 +471,7 @@ for episode in range(metrics['episodes'][-1] + 1, args.episodes + 1):
 
 
 
+
         # print('obs model')
         # du.visualize_parameters(monolithic_model.observation_model, print)
         # print(du.count_parameters(monolithic_model.observation_model))
