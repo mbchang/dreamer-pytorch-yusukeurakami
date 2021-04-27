@@ -168,7 +168,6 @@ args.observation_consistency = True
 args.dkl_pwr = 1
 args.grndrate = 1
 args.lr = 0.001  # doesn't affect the lr.
-# args.lr = 0.0005
 args.lr_decay_every = int(1e4)
 args.lr_decay_gamma = 0.95
 args.kl_coeff = 1e-4
@@ -189,16 +188,6 @@ slot_dynamic_autoencoder = lvm.RSSMLVM(
     mode='dynamics',
     device=args.device,
     args=args).to(args.device)
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -243,12 +232,7 @@ else:
 if args.slots:
     # observation_model = ssa.ObservationModel(indim=args.belief_size//args.num_slots+args.state_size//args.num_slots, num_slots=args.num_slots, scale=0.1).to(device=args.device)
 
-    # print(observation_model.modules)
-
     observation_model = slot_dynamic_autoencoder.observation_model
-
-
-
 
 
 else:
@@ -281,10 +265,6 @@ if args.slots:
 else:
 
     value_model = ValueModel(args.belief_size, args.state_size, args.hidden_size, args.dense_activation_function).to(device=args.device)
-
-
-
-
 
 
 param_list = list(transition_model.parameters()) + list(observation_model.parameters()) + list(reward_model.parameters()) + list(encoder.parameters())
@@ -373,73 +353,12 @@ else:
         optimizer=model_optimizer,
         args=args)
 
-
-
 monolithic_policy = mw.MonolithicPolicyWrapper(
     actor=actor_model,
     critic=value_model,
     actor_optimizer=actor_optimizer,
     critic_optimizer=value_optimizer,
     args=args)
-
-
-print(reward_model)
-print(transition_model)
-print(observation_model)
-
-
-
-
-
-
-# args.lr = 0.0001
-# args.lr_decay_every = int(1e4)
-# args.lr_decay_gamma = 0.95
-# args.kl_coeff = 1e-4
-# args.dkl_coeff = 1e-4
-# args.dkl_steps = int(5e4)
-# dynamics_model_builder = lambda state_dim: dm.SlotDynamicsModel(state_dim, 
-#             action_dim=5, hid_dim=128, interaction_type='pairwise')
-# torch.manual_seed(0)
-# slot_dynamic_autoencoder = lvm.RSSMLVM(
-#     recognition_model=ssa.RecognitionModel(
-#         num_slots=5, 
-#         interface_dim=32, 
-#         slot_dim=128,
-#         iters=3,
-#         slot_temp=1), 
-#     dynamics_model=dm.RSSM(stoch_dim=128, model=dynamics_model_builder(state_dim=128)),
-#     observation_model=ssa.ObservationModel(indim=128, num_slots=5, scale=10),
-#     mode='dynamics',
-#     device=torch.device('cpu'),
-#     args=args).to(torch.device('cpu'))
-
-
-# monolithic_model.observation_model_model = slot_dynamic_autoencoder.observation_model
-# monolithic_model.transition_model_model = slot_dynamic_autoencoder.transition_model
-# transition_model = slot_dynamic_autoencoder.transition_model
-# observation_model = slot_dynamic_autoencoder.observation_model
-
-
-print('obs model')
-du.visualize_parameters(monolithic_model.observation_model, print)
-print(du.count_parameters(monolithic_model.observation_model))
-print('trans model')
-du.visualize_parameters(monolithic_model.transition_model, print)
-print(du.count_parameters(monolithic_model.transition_model))
-
-
-print('obs model', du.count_parameters(monolithic_model.observation_model))
-print('trans model', du.count_parameters(monolithic_model.transition_model))
-print('dynamics_model', du.count_parameters(monolithic_model.transition_model.dynamics_model))
-print('rssm_head', du.count_parameters(monolithic_model.transition_model.rssm_head))
-
-print('\n')
-
-# assert False
-
-
-
 
 
 # Training (and testing)
@@ -455,48 +374,9 @@ for episode in range(metrics['episodes'][-1] + 1, args.episodes + 1):
         # Draw sequence chunks {(o_t, a_t, r_t+1, terminal_t+1)} ~ D uniformly at random from the dataset (including terminal flags)
         observations, actions, rewards, nonterminals = D.sample(args.batch_size, args.chunk_size) # Transitions start at time t = 0
 
-        # # print(observations[0])
-        # plt.imsave('kik.png', observations[0,0].permute((1,2,0)).numpy())
-        # # print(observation.shape)
-        # print(args.chunk_size)
-        # print(args.max_episode_length)
-        # assert False
-
-
-        # print(observations.shape)
-        # torch.save(dict(observations=observations, actions=actions), 'debug_lvm.pt')
-
-        # ckpt = torch.load('debug_lvm.pt')
-        # observations, actions = ckpt['observations'], ckpt['actions']
-
-
-
-
-        # print('obs model')
-        # du.visualize_parameters(monolithic_model.observation_model, print)
-        # print(du.count_parameters(monolithic_model.observation_model))
-        # print('trans model')
-        # du.visualize_parameters(monolithic_model.transition_model, print)
-        # print(du.count_parameters(monolithic_model.transition_model))
-
-        # print(reloaded_observations.shape)
-
-
-        # assert False
-
-
-        # torch.manual_seed(0)
         beliefs, posterior_states, observation_loss, reward_loss, kl_loss = monolithic_model.main(observations, actions, rewards, nonterminals, free_nats, global_prior, param_list)
 
-
-
-        # assert False
-
         actor_loss, value_loss = monolithic_policy.main(beliefs, posterior_states, model_modules, monolithic_model.transition_model, monolithic_model.reward)
-
-
-        # print([observation_loss.item(), reward_loss.item(), kl_loss.item(), actor_loss.item(), value_loss.item()])
-        # assert False
         
         # # Store (0) observation loss (1) reward loss (2) KL loss (3) actor loss (4) value loss
         losses.append([observation_loss.item(), reward_loss.item(), kl_loss.item(), actor_loss.item(), value_loss.item()])
@@ -515,10 +395,6 @@ for episode in range(metrics['episodes'][-1] + 1, args.episodes + 1):
     lineplot(metrics['episodes'][-len(metrics['actor_loss']):], metrics['actor_loss'], 'actor_loss', results_dir)
     lineplot(metrics['episodes'][-len(metrics['value_loss']):], metrics['value_loss'], 'value_loss', results_dir)
 
-
-    # if args.lvm_only:
-    #     print('NOT COLLECTING NEW DATA')
-    # else:
     # Data collection
     print("Data collection")
     with torch.no_grad():
@@ -565,13 +441,6 @@ for episode in range(metrics['episodes'][-1] + 1, args.episodes + 1):
                 test_observations = []
                 test_actions = []
 
-                # while not done:
-                #     action = env.sample_random_action()
-                #     next_observation, reward, done = env.step(action)
-                #     D.append(observation, action, reward, done)
-                #     observation = next_observation
-                #     t += 1
-
                 observation, total_rewards, video_frames = test_envs.reset(), np.zeros((args.test_episodes, )), []
                 for t in range(args.max_episode_length):
                     action = test_envs.sample_random_action()
@@ -584,8 +453,6 @@ for episode in range(metrics['episodes'][-1] + 1, args.episodes + 1):
 
                     observation = next_observation
 
-                # print(test_observations[0].shape)
-                # assert False
 
                 test_observations = torch.stack(test_observations).to(args.device)
                 test_actions = torch.stack(test_actions).to(args.device)
@@ -600,7 +467,6 @@ for episode in range(metrics['episodes'][-1] + 1, args.episodes + 1):
                     frame = torch.cat([
                         test_observations[t],  # (B, C, H, W)
                         test_preds.pbd[t],  # (B, C, H, W)
-                        # test_preds.cbd[t].permute((1,0,2,3,4)).reshape(test_bsize*args.num_slots, c, h, w),  # (B, C, H, W)
                         test_preds.cbd[t].permute((1,0,2,3,4)).reshape(test_bsize*args.num_slots, c, h, w),  # (B, C, H, W)
                         ], dim=0)
                     video_frames.append(make_grid(frame, nrow=args.test_episodes).cpu().numpy())  # Decentre
@@ -613,30 +479,8 @@ for episode in range(metrics['episodes'][-1] + 1, args.episodes + 1):
                 torchvision.utils.save_image(gridbd, '{}_before_dynamics.png'.format(fprefix))
 
 
-
-                # print(test_observations.shape)
-                # print(test_actions.shape)
-
-                # assert False
-
-
-                # test_observations = torch.stack(test_observations).to(args.device)
-                # test_actions = torch.stack(test_actions).to(args.device)
-
                 train_priors, train_posteriors = monolithic_model.transition_model.forward(itf.InteractiveBatchData(obs=observations, act=actions))
-                # test_beliefs, test_posterior_states = monolithic_model.get_beliefs_and_states(test_posteriors)
                 train_preds = monolithic_model.predict(train_priors, train_posteriors, observations.shape)
-
-                # # HACK: the last frame is masked out, so let's not count it.
-                # for t in range(args.max_episode_length-1):
-                #     train_bsize, c, h, w = observations[t].shape#[0]
-                #     frame = torch.cat([
-                #         test_observations[t],  # (B, C, H, W)
-                #         test_preds.pbd[t],  # (B, C, H, W)
-                #         # test_preds.cbd[t].permute((1,0,2,3,4)).reshape(test_bsize*args.num_slots, c, h, w),  # (B, C, H, W)
-                #         test_preds.cbd[t].permute((1,0,2,3,4)).reshape(test_bsize*args.num_slots, c, h, w),  # (B, C, H, W)
-                #         ], dim=0)
-                #     video_frames.append(make_grid(frame, nrow=args.test_episodes).cpu().numpy())  # Decentre
 
                 gridbd = vis.visualize_slots_grid_dynamic(
                     ground_truth=observations[:args.chunk_size, 0],  # (T, C, H, W)
@@ -644,12 +488,6 @@ for episode in range(metrics['episodes'][-1] + 1, args.episodes + 1):
                     components=train_preds.cbd[:args.chunk_size, 0])  # (T, K, C, H, W)
                 fprefix = os.path.join(results_dir, 'lvm_debug{}'.format(episode))
                 torchvision.utils.save_image(gridbd, '{}_before_dynamics_train.png'.format(fprefix))
-
-
-
-
-
-
 
 
             else:
@@ -680,8 +518,6 @@ for episode in range(metrics['episodes'][-1] + 1, args.episodes + 1):
                                 pred,  # (B, C, H, W)
                                 masked_rgbs.permute((1,0,2,3,4)).reshape(vis_b*args.num_slots, c, h, w)  # (B*K, C, H, W)
                                 ], dim=0)  # (B*(1+1+K), C, H, W)
-
-                            # video_frames.append(make_grid(frame+0.5, nrow=args.test_episodes).numpy())  # Decentre
 
                             if isinstance(env, SimpleEntityEnv):
                                 video_frames.append(make_grid(frame, nrow=args.test_episodes).numpy())  # Decentre
