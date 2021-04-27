@@ -173,11 +173,11 @@ class SlotsModelWrapper(nn.Module):
         self.transition_model = transition
         self.observation_model = observation
 
+        self.reward = reward
 
         # self.optimizer = optimizer
 
         self.optimizer = torch.optim.Adam(self.parameters(), lr=args.lr)#args.lr)  # just replace it with its own optimizer for now. Might need to reconcile with the previous implementation though because it seems like they do something with freezing parameters. 
-        self.reward = reward
 
         self.args = args  # later this should be changed to model_self.args
 
@@ -390,10 +390,23 @@ class SlotsModelWrapper(nn.Module):
             log_string = 'Batch: {}\n\tLoss:\t{}\n\tLoss Before Dynamics:\t{}\n\tLoss After Dynamics:\t{}\n\tKL Initial:\t{}\n\tKL Dynamic:\t{}\n\tPrevious DKL:\t{}\n\tCurrent DKL:\t{}'.format(self.i, loss_trace.loss.item(), loss_trace.loss_bd.item(), loss_trace.loss_ad.item(), loss_trace.initial_kl.item(), loss_trace.dynamic_kl.item(), dkl_coeff, self.dkl_scheduler.get_value())
             if self.args.observation_consistency:
                 log_string += '\n\tObservation Consistency:\t{}'.format(loss_trace.loss_consistency.item())
-            print(log_string)
+            # print(log_string)
 
         if self.args.lvm_only:
-            reward_loss = torch.zeros([1]).to(observations.device)
+            # reward_loss = torch.zeros([1]).to(observations.device)
+
+            reward_loss = F.mse_loss(bottle(self.reward, 
+
+
+
+                # (beliefs[:-1], posterior_states[:-1])), 
+                (beliefs[:-1].detach(), posterior_states[:-1].detach())), 
+
+
+                rewards[:-1], reduction='none').mean(dim=(0,1))  # NOTE THIS IS DIFFERENT FROM MONOLITHIC BECAUSE WE ARE TAKING [:-1] fomr beliefs and posterior_states!
+
+            log_string += '\n\tReward Loss:\t{}'.format(reward_loss.item())
+            print(log_string)
 
         else:
 
@@ -408,6 +421,11 @@ class SlotsModelWrapper(nn.Module):
             kl_loss = torch.max(div, free_nats).mean(dim=(0, 1))  # Note that normalisation by overshooting distance and weighting by overshooting distance cancel out
             if self.args.global_kl_beta != 0:
                 kl_loss += self.args.global_kl_beta * kl_divergence(posterior, global_prior).sum(dim=2).mean(dim=(0, 1))
+
+
+
+
+
 
         return observation_loss, reward_loss, kl_loss
 
