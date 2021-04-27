@@ -172,8 +172,24 @@ class SlotsModelWrapper(nn.Module):
         self.encoder = encoder
         self.transition_model = transition
         self.observation_model = observation
+
+
+        # self.optimizer = optimizer
+
+
+
+        # self.optimizer = torch.optim.Adam(self.parameters(), lr=args.lr)  # just replace it with its own optimizer for now. Might need to reconcile with the previous implementation though because it seems like they do something with freezing parameters. 
+
+        # self.optimizer = torch.optim.Adam(self.parameters(), lr=args.lr)  # just replace it with its own optimizer for now. Might need to reconcile with the previous implementation though because it seems like they do something with freezing parameters. 
+
+        # self.optimizer = torch.optim.SGD(self.observation_model.parameters(), lr=1e-4)#args.lr)  # just replace it with its own optimizer for now. Might need to reconcile with the previous implementation though because it seems like they do something with freezing parameters. 
+
+        self.optimizer = torch.optim.Adam(self.parameters(), lr=args.lr)#args.lr)  # just replace it with its own optimizer for now. Might need to reconcile with the previous implementation though because it seems like they do something with freezing parameters. 
+
         self.reward = reward
-        self.optimizer = optimizer
+
+
+
         self.args = args  # later this should be changed to model_self.args
 
         self.optim_scheduler = torch.optim.lr_scheduler.StepLR(
@@ -208,8 +224,8 @@ class SlotsModelWrapper(nn.Module):
         # print('blah')
 
         batch = itf.InteractiveBatchData(obs=observations, act=actions)
-        torch.manual_seed(0)
-        np.random.seed(0)
+        # torch.manual_seed(0)
+        # np.random.seed(0)
 
 
         # print('observations', observations.norm(), observations.shape)
@@ -249,10 +265,10 @@ class SlotsModelWrapper(nn.Module):
 
                 reward_loss, kl_loss = self.compute_overshooting_feedback(overshooting_vars, ovsht_beliefs, ovsht_prior_states, ovsht_prior, ovsht_posterior, free_nats, reward_loss, kl_loss)
 
-        # Apply linearly ramping learning rate schedule
-        if self.args.learning_rate_schedule != 0:
-            for group in self.optimizer.param_groups:
-                group['lr'] = min(group['lr'] + self.args.model_learning_rate / self.args.learning_rate_schedule, self.args.model_learning_rate)
+        # # Apply linearly ramping learning rate schedule
+        # if self.args.learning_rate_schedule != 0:
+        #     for group in self.optimizer.param_groups:
+        #         group['lr'] = min(group['lr'] + self.args.model_learning_rate / self.args.learning_rate_schedule, self.args.model_learning_rate)
 
         model_loss = observation_loss + reward_loss + kl_loss
 
@@ -463,6 +479,20 @@ class SlotsModelWrapper(nn.Module):
             observation_loss = loss
 
 
+
+
+
+
+            log_string = 'Batch: {}\n\tLoss:\t{}\n\tLoss Before Dynamics:\t{}\n\tLoss After Dynamics:\t{}\n\tKL Initial:\t{}\n\tKL Dynamic:\t{}\n\tPrevious DKL:\t{}\n\tCurrent DKL:\t{}'.format(self.i, loss.item(), loss_trace.loss_bd.item(), loss_trace.loss_ad.item(), loss_trace.initial_kl.item(), loss_trace.dynamic_kl.item(), dkl_coeff, self.dkl_scheduler.get_value())
+            if self.args.observation_consistency:
+                # observation_consistency_losses.append(loss_trace.loss_consistency.item())
+                log_string += '\n\tObservation Consistency:\t{}'.format(loss_trace.loss_consistency.item())
+            print(log_string)
+
+
+
+
+
         if self.args.lvm_only:
             reward_loss = torch.zeros([1]).to(observations.device)
 
@@ -513,24 +543,58 @@ class SlotsModelWrapper(nn.Module):
     #     self.optimizer.step()
 
     def update(self, model_loss, param_list):
-        # Update model parameters
+
+        # print(self.optimizer.__dict__)
+        # assert False
+
+        # # Update model parameters
+        # self.optimizer.zero_grad()
+        # model_loss.backward()
+        # # nn.utils.clip_grad_norm_(param_list, self.args.grad_clip_norm, norm_type=2)
+        # self.optimizer.step()
+
+
+        # torch.manual_seed(0)
+
+        # print('BEFORE UPDATE\n'+'#'*30)
+        # du.visualize_parameters(self, print)
+
+
+        
         self.optimizer.zero_grad()
         model_loss.backward()
-        # nn.utils.clip_grad_norm_(param_list, self.args.grad_clip_norm, norm_type=2)
+        # print('AFTER BACKWARD\n'+'#'*30)
+        # du.visualize_parameters(self, print)
+        # print('LRLRLRRLRL', self.optimizer.state_dict()['param_groups'][0])
+        # assert False
+
         self.optimizer.step()
+
+
+        # print('AFTER STEP\n'+'#'*30)
+        # du.visualize_parameters(self, print)
+        # print('lr', self.optimizer.state_dict())
+        # assert False
+
+
+
+
+
+
 
     # def update(self, loss, i, pfunc):
     #     self.optimizer.zero_grad()
     #     loss.backward()
     #     self.optimizer.step()
         self.dkl_scheduler.step()
+        # print('stepped dkl_scheulder')
 
         if self.i >= self.args.lr_decay_after:
             before_lr = self.optimizer.state_dict()['param_groups'][0]['lr']
             self.optim_scheduler.step()
             after_lr = self.optimizer.state_dict()['param_groups'][0]['lr']
             if before_lr != after_lr:
-                pfunc('Batch: {}\tLR Previously: {}\tLR Now: {}'.format(i, before_lr, after_lr))
+                print('Batch: {}\tLR Previously: {}\tLR Now: {}'.format(self.i, before_lr, after_lr))
         self.i += 1
 
 
@@ -594,14 +658,29 @@ class MonolithicPolicyWrapper(nn.Module):
         return value_loss
 
 
+    # def update_actor(self, actor_loss):
+    #     # actor_loss = -torch.mean(returns)
+    #     # Update model parameters
+    #     self.actor_optimizer.zero_grad()
+    #     actor_loss.backward()
+    #     nn.utils.clip_grad_norm_(self.actor.parameters(), self.args.grad_clip_norm, norm_type=2)
+    #     self.actor_optimizer.step()
+    #     # return actor_loss
+
+    # def update_critic(self, value_loss):
+    #     # Update model parameters
+    #     self.critic_optimizer.zero_grad()
+    #     value_loss.backward()
+    #     nn.utils.clip_grad_norm_(self.critic.parameters(), self.args.grad_clip_norm, norm_type=2)
+    #     self.critic_optimizer.step()
+
+
     def update_actor(self, actor_loss):
-        # actor_loss = -torch.mean(returns)
         # Update model parameters
         self.actor_optimizer.zero_grad()
         actor_loss.backward()
         nn.utils.clip_grad_norm_(self.actor.parameters(), self.args.grad_clip_norm, norm_type=2)
         self.actor_optimizer.step()
-        # return actor_loss
 
     def update_critic(self, value_loss):
         # Update model parameters
@@ -620,8 +699,9 @@ class MonolithicPolicyWrapper(nn.Module):
             actor_loss *= 0
             value_loss *= 0
 
-        self.update_actor(actor_loss)
-        self.update_critic(value_loss)
+        # LVM DEBUG
+        # self.update_actor(actor_loss)
+        # self.update_critic(value_loss)
         return actor_loss, value_loss
 
 

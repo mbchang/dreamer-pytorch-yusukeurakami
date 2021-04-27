@@ -93,4 +93,16 @@ env PYTORCH_JIT=0 python modular_main.py --algo dreamer --env simple_box4_separa
 (dreamer4)
 CUDA_VISIBLE_DEVICES=0 DEVICE=:0 env PYTORCH_JIT=0 python modular_main.py --algo dreamer --env simple_box4_separate --action-repeat 1 --id 4_26_21_slots_lvm_only --model_learning-rate 1e-4 --actor_learning-rate 0 --value_learning-rate 0 --max-episode-length 20 --chunk-size 4 --seed-episodes 10000 --episodes 1000000 --slots --num_slots 5 --batch-size 16 --belief-size 640 --state-size 640 --test-interval 5 --lvm_only
 
+(dreamer4) --> after having fixed the uint8 problem in entity_memory
+CUDA_VISIBLE_DEVICES=0 DEVICE=:0 env PYTORCH_JIT=0 python modular_main.py --algo dreamer --env simple_box4_separate --action-repeat 1 --id 4_26_21_slots_lvm_only_2 --model_learning-rate 1e-4 --actor_learning-rate 0 --value_learning-rate 0 --max-episode-length 20 --chunk-size 4 --seed-episodes 10000 --episodes 1000000 --slots --num_slots 5 --batch-size 16 --belief-size 640 --state-size 640 --test-interval 5 --lvm_only
 
+(dreamer3) --> after having fixed the uint8 problem in entity_memory. Also visualizing before_dynamics_train
+CUDA_VISIBLE_DEVICES=0 DEVICE=:0 env PYTORCH_JIT=0 python modular_main.py --algo dreamer --env simple_box4_separate --action-repeat 1 --id 4_26_21_slots_lvm_only_2train --model_learning-rate 1e-4 --actor_learning-rate 0 --value_learning-rate 0 --max-episode-length 20 --chunk-size 4 --seed-episodes 10000 --episodes 1000000 --slots --num_slots 5 --batch-size 16 --belief-size 640 --state-size 640 --test-interval 5 --lvm_only
+
+(dreamer5) --> after having fixed the uint8 problem in entity_memory. Also visualizing before_dynamics_train. Chunk size 2
+CUDA_VISIBLE_DEVICES=0 DEVICE=:0 env PYTORCH_JIT=0 python modular_main.py --algo dreamer --env simple_box4_separate --action-repeat 1 --id 4_26_21_slots_lvm_only_2train_cs2 --model_learning-rate 1e-4 --actor_learning-rate 0 --value_learning-rate 0 --max-episode-length 20 --chunk-size 2 --seed-episodes 10000 --episodes 1000000 --slots --num_slots 5 --batch-size 16 --belief-size 640 --state-size 640 --test-interval 5 --lvm_only
+
+
+4/27/21
+(dreamer3) --> got rid of fixed seed
+CUDA_VISIBLE_DEVICES=0 DEVICE=:0 env PYTORCH_JIT=0 python modular_main.py --algo dreamer --env simple_box4_separate --action-repeat 1 --id 4_27_21_no_fixed_seed --model_learning-rate 1e-4 --actor_learning-rate 0 --value_learning-rate 0 --max-episode-length 20 --chunk-size 4 --seed-episodes 10000 --episodes 1000000 --slots --num_slots 5 --batch-size 16 --belief-size 640 --state-size 640 --test-interval 5 --lvm_only
