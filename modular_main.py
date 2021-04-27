@@ -147,11 +147,6 @@ elif not args.test:
     else:
         D = ExperienceReplay(args.experience_size, args.symbolic_env, env.observation_size, env.action_size, args.bit_depth, args.device)
 
-    # actually 
-
-
-
-
     # Initialise dataset D with S random seed episodes
     for s in tqdm(range(1, args.seed_episodes + 1)):
         observation, done, t = env.reset(), False, 0
