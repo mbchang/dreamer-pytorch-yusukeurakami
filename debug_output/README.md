@@ -106,3 +106,10 @@ CUDA_VISIBLE_DEVICES=0 DEVICE=:0 env PYTORCH_JIT=0 python modular_main.py --algo
 4/27/21
 (dreamer3) --> got rid of fixed seed
 CUDA_VISIBLE_DEVICES=0 DEVICE=:0 env PYTORCH_JIT=0 python modular_main.py --algo dreamer --env simple_box4_separate --action-repeat 1 --id 4_27_21_no_fixed_seed --model_learning-rate 1e-4 --actor_learning-rate 0 --value_learning-rate 0 --max-episode-length 20 --chunk-size 4 --seed-episodes 10000 --episodes 1000000 --slots --num_slots 5 --batch-size 16 --belief-size 640 --state-size 640 --test-interval 5 --lvm_only
+
+
+(dreamer4) --> sanity check that monolithic dreamer still works.
+CUDA_VISIBLE_DEVICES=2 DEVICE=:0 env PYTORCH_JIT=0 python modular_main.py --algo dreamer --env walker-walk --action-repeat 2 --id 4_27_21_modular_monolithic
+
+(dreamer5) --> sanity check that monolithic dreamer still works.
+CUDA_VISIBLE_DEVICES=4 DEVICE=:0 env PYTORCH_JIT=0 python modular_main.py --algo dreamer --env simple_box4_separate --action-repeat 2 --id 4_27_21_modular_monolithic_balls --max-episode-length 100 --seed-episodes 1000 --episodes 1000000

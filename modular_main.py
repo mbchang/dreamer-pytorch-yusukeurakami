@@ -140,9 +140,18 @@ if args.experience_replay != '' and os.path.exists(args.experience_replay):
     metrics['steps'], metrics['episodes'] = [D.steps] * D.episodes, list(range(1, D.episodes + 1))
 elif not args.test:
     if args.slots:
+
+        # actually this should be "if isinstance(env, SimpleEntityEnv"
+
         D = EntityExperienceReplay(args.experience_size, args.symbolic_env, env.observation_size, env.action_size, args.bit_depth, args.device)
     else:
         D = ExperienceReplay(args.experience_size, args.symbolic_env, env.observation_size, env.action_size, args.bit_depth, args.device)
+
+    # actually 
+
+
+
+
     # Initialise dataset D with S random seed episodes
     for s in tqdm(range(1, args.seed_episodes + 1)):
         observation, done, t = env.reset(), False, 0
@@ -162,32 +171,31 @@ env.close()
 print('Initializing model...')
 
 
-
-args.lr_decay_after = 0
-args.observation_consistency = True
-args.dkl_pwr = 1
-args.grndrate = 1
-args.lr = 0.001  # doesn't affect the lr.
-args.lr_decay_every = int(1e4)
-args.lr_decay_gamma = 0.95
-args.kl_coeff = 1e-4
-args.dkl_coeff = 1e-4
-args.dkl_steps = int(5e4)
-dynamics_model_builder = lambda state_dim: dm.SlotDynamicsModel(state_dim, 
-            action_dim=5, hid_dim=128, interaction_type='pairwise')
-# torch.manual_seed(0)
-slot_dynamic_autoencoder = lvm.RSSMLVM(
-    recognition_model=ssa.RecognitionModel(
-        num_slots=5, 
-        interface_dim=32, 
-        slot_dim=128,
-        iters=3,
-        slot_temp=1), 
-    dynamics_model=dm.RSSM(stoch_dim=128, model=dynamics_model_builder(state_dim=128)),
-    observation_model=ssa.ObservationModel(indim=128, num_slots=5, scale=10),
-    mode='dynamics',
-    device=args.device,
-    args=args).to(args.device)
+if args.slots:
+    args.lr_decay_after = 0
+    args.observation_consistency = True
+    args.dkl_pwr = 1
+    args.grndrate = 1
+    args.lr = 1e-4
+    args.lr_decay_every = int(1e4)
+    args.lr_decay_gamma = 0.95
+    args.kl_coeff = 1e-4
+    args.dkl_coeff = 1e-4
+    args.dkl_steps = int(5e4)
+    dynamics_model_builder = lambda state_dim: dm.SlotDynamicsModel(state_dim, 
+                action_dim=5, hid_dim=128, interaction_type='pairwise')
+    slot_dynamic_autoencoder = lvm.RSSMLVM(
+        recognition_model=ssa.RecognitionModel(
+            num_slots=5, 
+            interface_dim=32, 
+            slot_dim=128,
+            iters=3,
+            slot_temp=1), 
+        dynamics_model=dm.RSSM(stoch_dim=128, model=dynamics_model_builder(state_dim=128)),
+        observation_model=ssa.ObservationModel(indim=128, num_slots=5, scale=10),
+        mode='dynamics',
+        device=args.device,
+        args=args).to(args.device)
 
 
 
@@ -445,7 +453,6 @@ for episode in range(metrics['episodes'][-1] + 1, args.episodes + 1):
                 for t in range(args.max_episode_length):
                     action = test_envs.sample_random_action()
                     next_observation, reward, done = test_envs.step(action)
-                    # print(t, done)
 
                     test_observations.append(observation)
                     test_actions.append(action)

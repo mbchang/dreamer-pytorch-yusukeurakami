@@ -176,19 +176,8 @@ class SlotsModelWrapper(nn.Module):
 
         # self.optimizer = optimizer
 
-
-
-        # self.optimizer = torch.optim.Adam(self.parameters(), lr=args.lr)  # just replace it with its own optimizer for now. Might need to reconcile with the previous implementation though because it seems like they do something with freezing parameters. 
-
-        # self.optimizer = torch.optim.Adam(self.parameters(), lr=args.lr)  # just replace it with its own optimizer for now. Might need to reconcile with the previous implementation though because it seems like they do something with freezing parameters. 
-
-        # self.optimizer = torch.optim.SGD(self.observation_model.parameters(), lr=1e-4)#args.lr)  # just replace it with its own optimizer for now. Might need to reconcile with the previous implementation though because it seems like they do something with freezing parameters. 
-
         self.optimizer = torch.optim.Adam(self.parameters(), lr=args.lr)#args.lr)  # just replace it with its own optimizer for now. Might need to reconcile with the previous implementation though because it seems like they do something with freezing parameters. 
-
         self.reward = reward
-
-
 
         self.args = args  # later this should be changed to model_self.args
 
@@ -202,60 +191,19 @@ class SlotsModelWrapper(nn.Module):
         # beliefs = torch.stack([prior.belief for prior in priors])  # or what about prior?
         beliefs = torch.stack([posterior.belief for posterior in posteriors])
         posterior_states = torch.stack([posterior.sample for posterior in posteriors])
-
-
-        # beliefs = 
-
-
-
         return beliefs, posterior_states
-
-
-
-        # # beliefs = 
-        # pass
 
     def main(self, observations, actions, rewards, nonterminals, free_nats, global_prior, param_list):
 
         # beliefs, prior_states, prior, posterior_states, posterior = self.generate_trace(observations, actions, nonterminals)
 
-
-        # print('prior belief', beliefs[-1], beliefs[-1].shape)
-        # print('blah')
-
         batch = itf.InteractiveBatchData(obs=observations, act=actions)
-        # torch.manual_seed(0)
-        # np.random.seed(0)
-
-
-        # print('observations', observations.norm(), observations.shape)
-        # print('actions', actions.norm(), actions.shape)
-        # print('observations[-1]', observations[-1].norm())
-        # print('actions[-1]', actions[-1].norm())
-
 
         priors, posteriors = self.transition_model.forward(batch)
-        # beliefs = 
-
-
-        # now need to construct beliefs, prior, posterior_states, posterior
-
-        # print('posterior belief', posteriors[-1].belief, posteriors[-1].belief.shape)
-        # print('posterior sample', posteriors[-1].sample, posteriors[-1].sample.shape)
-        # assert False
 
         beliefs, posterior_states = self.get_beliefs_and_states(posteriors)
 
-
-        # print(beliefs.shape)
-        # print(posterior_states.shape)
-        # assert False
-
-
         observation_loss, reward_loss, kl_loss = self.compute_feedback(observations, rewards, free_nats, global_prior, beliefs, priors, posterior_states, posteriors)
-
-        # assert False
-
 
         # Calculate latent overshooting objective for t > 0
         if not self.args.lvm_only:
@@ -332,8 +280,6 @@ class SlotsModelWrapper(nn.Module):
 
 
 
-
-
     def get_obs_input(self, rssm_state):
         if np.random.uniform() < self.args.grndrate:
             obs_input = rssm_state.sample
@@ -372,13 +318,6 @@ class SlotsModelWrapper(nn.Module):
         return self.observation_model.decode(self.get_obs_input(rssm_state))
 
 
-
-
-
-
-
-
-
     def compute_filtering_feedback(self, preds, priors, posteriors, obs, args):
         t, b, c, h, w = obs.shape
         k = self.transition_model.recognition_model.slot_attn.num_slots
@@ -414,16 +353,6 @@ class SlotsModelWrapper(nn.Module):
 
 
 
-
-
-
-
-
-
-
-
-
-
     #############################################################################################
 
 
@@ -436,70 +365,25 @@ class SlotsModelWrapper(nn.Module):
 
             observation_dist = Normal(bottle(self.observation_model, (beliefs, posterior_states)), 1)
 
-            # print(observation_dist.loc)
-            # assert False
-
-
-
-
-
             observation_loss = -observation_dist.log_prob(observations[1:]).sum(dim=2 if self.args.symbolic_env else (2, 3, 4)).mean(dim=(0, 1))
         else: 
-
-            # pred = bottle(self.observation_model, (beliefs, posterior_states))
-
-            # print('pred', pred, pred.shape)
-            # # assert False
-            # # print(observations[1:].shape)
-            # # assert False
-
-            # observation_loss = F.mse_loss(pred, observations, reduction='none').sum(dim=2 if self.args.symbolic_env else (2, 3, 4)).mean(dim=(0, 1))  # changed observations[1:] to observations!
-
-            # print('bd loss', observation_loss)
-            # assert False
-
-            # print(observations.shape)
-            # assert False
             preds = self.predict(prior, posterior, observations.shape)
-
-            # print(preds)
-            # assert False
             loss, loss_trace, dkl_coeff = self.compute_filtering_feedback(preds, prior, posterior, observations, self.args)
-
-            # ok loss and loss_trace are the same.
-
-            # print('bd loss', loss_trace.loss_bd)
-            # print('loss', loss)
-            # print('loss_trace', loss_trace)
-            # assert False
 
             # VERY HACKY.
             # I am currently packing everything in "loss" (obseravtion loss, kl loss, consistency loss, etc) into "observation_loss". So even though the kl loss is actually in "loss", since I am putting kl loss in "observation_loss", I will make "kl_loss" 0.
             kl_loss = torch.zeros([1]).to(observations.device)
             observation_loss = loss
 
-
-
-
-
-
             log_string = 'Batch: {}\n\tLoss:\t{}\n\tLoss Before Dynamics:\t{}\n\tLoss After Dynamics:\t{}\n\tKL Initial:\t{}\n\tKL Dynamic:\t{}\n\tPrevious DKL:\t{}\n\tCurrent DKL:\t{}'.format(self.i, loss.item(), loss_trace.loss_bd.item(), loss_trace.loss_ad.item(), loss_trace.initial_kl.item(), loss_trace.dynamic_kl.item(), dkl_coeff, self.dkl_scheduler.get_value())
             if self.args.observation_consistency:
-                # observation_consistency_losses.append(loss_trace.loss_consistency.item())
                 log_string += '\n\tObservation Consistency:\t{}'.format(loss_trace.loss_consistency.item())
             print(log_string)
-
-
-
-
 
         if self.args.lvm_only:
             reward_loss = torch.zeros([1]).to(observations.device)
 
-
-
         else:
-
 
             if self.args.worldmodel_LogProbLoss:
                 reward_dist = Normal(bottle(self.reward, (beliefs, posterior_states)),1)
@@ -512,12 +396,6 @@ class SlotsModelWrapper(nn.Module):
             kl_loss = torch.max(div, free_nats).mean(dim=(0, 1))  # Note that normalisation by overshooting distance and weighting by overshooting distance cancel out
             if self.args.global_kl_beta != 0:
                 kl_loss += self.args.global_kl_beta * kl_divergence(posterior, global_prior).sum(dim=2).mean(dim=(0, 1))
-
-        # print(reward_loss)
-
-        # if self.args.lvm_only:
-        #     reward_loss *= 0
-        # assert False
 
         return observation_loss, reward_loss, kl_loss
 
@@ -543,51 +421,10 @@ class SlotsModelWrapper(nn.Module):
     #     self.optimizer.step()
 
     def update(self, model_loss, param_list):
-
-        # print(self.optimizer.__dict__)
-        # assert False
-
-        # # Update model parameters
-        # self.optimizer.zero_grad()
-        # model_loss.backward()
-        # # nn.utils.clip_grad_norm_(param_list, self.args.grad_clip_norm, norm_type=2)
-        # self.optimizer.step()
-
-
-        # torch.manual_seed(0)
-
-        # print('BEFORE UPDATE\n'+'#'*30)
-        # du.visualize_parameters(self, print)
-
-
-        
         self.optimizer.zero_grad()
         model_loss.backward()
-        # print('AFTER BACKWARD\n'+'#'*30)
-        # du.visualize_parameters(self, print)
-        # print('LRLRLRRLRL', self.optimizer.state_dict()['param_groups'][0])
-        # assert False
-
         self.optimizer.step()
-
-
-        # print('AFTER STEP\n'+'#'*30)
-        # du.visualize_parameters(self, print)
-        # print('lr', self.optimizer.state_dict())
-        # assert False
-
-
-
-
-
-
-
-    # def update(self, loss, i, pfunc):
-    #     self.optimizer.zero_grad()
-    #     loss.backward()
-    #     self.optimizer.step()
         self.dkl_scheduler.step()
-        # print('stepped dkl_scheulder')
 
         if self.i >= self.args.lr_decay_after:
             before_lr = self.optimizer.state_dict()['param_groups'][0]['lr']
@@ -596,18 +433,6 @@ class SlotsModelWrapper(nn.Module):
             if before_lr != after_lr:
                 print('Batch: {}\tLR Previously: {}\tLR Now: {}'.format(self.i, before_lr, after_lr))
         self.i += 1
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -656,24 +481,6 @@ class MonolithicPolicyWrapper(nn.Module):
         value_dist = Normal(bottle(self.critic, (value_beliefs, value_prior_states)),1) # detach the input tensor from the transition network.
         value_loss = -value_dist.log_prob(target_return).mean(dim=(0, 1)) 
         return value_loss
-
-
-    # def update_actor(self, actor_loss):
-    #     # actor_loss = -torch.mean(returns)
-    #     # Update model parameters
-    #     self.actor_optimizer.zero_grad()
-    #     actor_loss.backward()
-    #     nn.utils.clip_grad_norm_(self.actor.parameters(), self.args.grad_clip_norm, norm_type=2)
-    #     self.actor_optimizer.step()
-    #     # return actor_loss
-
-    # def update_critic(self, value_loss):
-    #     # Update model parameters
-    #     self.critic_optimizer.zero_grad()
-    #     value_loss.backward()
-    #     nn.utils.clip_grad_norm_(self.critic.parameters(), self.args.grad_clip_norm, norm_type=2)
-    #     self.critic_optimizer.step()
-
 
     def update_actor(self, actor_loss):
         # Update model parameters
