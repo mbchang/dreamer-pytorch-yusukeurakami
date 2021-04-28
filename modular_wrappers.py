@@ -294,13 +294,13 @@ class SlotsModelWrapper(lvm.RSSMLVM):
             # reward_loss = torch.zeros([1]).to(observations.device)
 
             if self.args.detach_latents_for_reward:
-                reward_loss = F.mse_loss(bottle(self.reward, 
+                loss_trace.reward_loss = F.mse_loss(bottle(self.reward, 
                     (beliefs[:-1], posterior_states[:-1])), 
                     # (beliefs[:-1].detach(), posterior_states[:-1].detach())), 
                     rewards[:-1], reduction='none').mean(dim=(0,1))  # NOTE THIS IS DIFFERENT FROM MONOLITHIC BECAUSE WE ARE TAKING [:-1] fomr beliefs and posterior_states!
 
             else:
-                reward_loss = F.mse_loss(bottle(self.reward, 
+                loss_trace.reward_loss = F.mse_loss(bottle(self.reward, 
                     # (beliefs[:-1], posterior_states[:-1])), 
                     (beliefs[:-1].detach(), posterior_states[:-1].detach())), 
                     rewards[:-1], reduction='none').mean(dim=(0,1))  # NOTE THIS IS DIFFERENT FROM MONOLITHIC BECAUSE WE ARE TAKING [:-1] fomr beliefs and posterior_states!
@@ -309,7 +309,7 @@ class SlotsModelWrapper(lvm.RSSMLVM):
 
 
 
-            log_string += '\n\tReward Loss:\t{}'.format(reward_loss.item())
+            log_string += '\n\tReward Loss:\t{}'.format(loss_trace.reward_loss.item())
             print(log_string)
 
         else:
@@ -327,7 +327,7 @@ class SlotsModelWrapper(lvm.RSSMLVM):
                 kl_loss += self.args.global_kl_beta * kl_divergence(posterior, global_prior).sum(dim=2).mean(dim=(0, 1))
 
 
-        return loss_trace.obs_loss, reward_loss, loss_trace.kl_loss
+        return loss_trace.obs_loss, loss_trace.reward_loss, loss_trace.kl_loss
 
     def compute_overshooting_feedback(self, overshooting_vars, ovsht_beliefs, ovsht_prior_states, ovsht_prior, ovsht_posterior, free_nats, reward_loss, kl_loss):
         seq_mask = torch.cat(overshooting_vars.masks, dim=1)
