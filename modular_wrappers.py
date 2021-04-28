@@ -273,61 +273,6 @@ class SlotsModelWrapper(lvm.RSSMLVM):
 
         return overshooting_vars, ovsht_beliefs, ovsht_prior_states, ovsht_prior, ovsht_posterior
 
-
-
-
-    #############################################################################################
-
-
-    # def compute_filtering_feedback(self, preds, priors, posteriors, obs, args):
-    #     t, b, c, h, w = obs.shape
-    #     k = self.transition_model.recognition_model.slot_attn.num_slots
-
-    #     kl = torch.empty(t, b, k).to(self.args.device)
-    #     for step in range(len(priors)):
-    #         # kl[step] = self.kl(posteriors[step].dist, priors[step].dist)
-    #         kl[step] = lvm.averaged_kl(posteriors[step].dist, priors[step].dist)
-
-    #     initial_kl = kl[0].mean()
-    #     dynamic_kl = kl[1:].mean()
-
-    #     loss_bd = F.mse_loss(preds.pbd, obs)
-    #     loss_ad = F.mse_loss(preds.pad, obs[1:])
-    #     dkl_coeff = self.dkl_scheduler.get_value()
-
-    #     observation_loss = loss_bd + loss_ad
-    #     kl_loss = args.kl_coeff*initial_kl + dkl_coeff*dynamic_kl**args.dkl_pwr
-
-
-    #     # loss = loss_bd + loss_ad + args.kl_coeff*initial_kl + dkl_coeff*dynamic_kl**args.dkl_pwr # note that there are now twice as many recon loss terms as kl, so maybe kl_coeff needs to be double what it usually is in static case?
-
-    #     if self.args.observation_consistency:
-    #         loss_consistency = F.mse_loss(preds.cad, preds.cbd[1:])
-    #         observation_loss += loss_consistency
-
-
-    #     loss = observation_loss + kl_loss
-
-
-    #     loss_trace = itf.LossTrace(
-    #         loss=loss,
-    #         kl=kl,
-    #         initial_kl=initial_kl, 
-    #         dynamic_kl=dynamic_kl, 
-    #         loss_bd=loss_bd, 
-    #         loss_ad=loss_ad,
-    #         loss_consistency=loss_consistency)
-    #     # return loss, loss_trace, dkl_coeff
-    #     return observation_loss, kl_loss, loss_trace, dkl_coeff
-
-
-
-
-
-    #############################################################################################
-
-
-
     def compute_feedback(self, observations, rewards, free_nats, global_prior, beliefs, prior, posterior_states, posterior, preds):
         # Calculate observation likelihood, reward likelihood and KL losses (for t = 0 only for latent overshooting); sum over final dims, average over batch and time (original implementation, though paper seems to miss 1/T scaling?)
         if self.args.worldmodel_LogProbLoss:
@@ -338,23 +283,12 @@ class SlotsModelWrapper(lvm.RSSMLVM):
 
             observation_loss = -observation_dist.log_prob(observations[1:]).sum(dim=2 if self.args.symbolic_env else (2, 3, 4)).mean(dim=(0, 1))
         else: 
-            # preds = self.predict(prior, posterior, observations.shape)
-            # loss, loss_trace, dkl_coeff = self.compute_filtering_feedback(preds, prior, posterior, observations, self.args)
-
-
-            # observation_loss, kl_loss, loss_trace, dkl_coeff = self.compute_filtering_feedback(preds, prior, posterior, observations, self.args)
-
             dkl_coeff = self.dkl_scheduler.get_value()
             loss, loss_trace = self.compute_filtering_feedback(preds, prior, posterior, observations, dkl_coeff, self.args)
-
-            # observation_loss = loss_trace.obs_loss
-            # kl_loss = loss_trace.kl_loss
-            # loss_trace.loss = loss
 
             log_string = 'Batch: {}\n\tLoss:\t{}\n\tLoss Before Dynamics:\t{}\n\tLoss After Dynamics:\t{}\n\tKL Initial:\t{}\n\tKL Dynamic:\t{}\n\tPrevious DKL:\t{}\n\tCurrent DKL:\t{}'.format(self.i, loss.item(), loss_trace.loss_bd.item(), loss_trace.loss_ad.item(), loss_trace.initial_kl.item(), loss_trace.dynamic_kl.item(), dkl_coeff, self.dkl_scheduler.get_value())
             if self.args.observation_consistency:
                 log_string += '\n\tObservation Consistency:\t{}'.format(loss_trace.loss_consistency.item())
-            # print(log_string)
 
         if self.args.lvm_only:
             # reward_loss = torch.zeros([1]).to(observations.device)
@@ -393,11 +327,6 @@ class SlotsModelWrapper(lvm.RSSMLVM):
                 kl_loss += self.args.global_kl_beta * kl_divergence(posterior, global_prior).sum(dim=2).mean(dim=(0, 1))
 
 
-
-
-
-
-        # return observation_loss, reward_loss, kl_loss
         return loss_trace.obs_loss, reward_loss, loss_trace.kl_loss
 
     def compute_overshooting_feedback(self, overshooting_vars, ovsht_beliefs, ovsht_prior_states, ovsht_prior, ovsht_posterior, free_nats, reward_loss, kl_loss):
