@@ -279,69 +279,46 @@ class SlotsModelWrapper(lvm.RSSMLVM):
     #############################################################################################
 
 
-    # later will get rid of the batch argument
-    def predict(self, priors, posteriors, obs_shape):
-        # t, b, c, h, w = batch.obs.shape
-        t, b, c, h, w = obs_shape
-        k = self.transition_model.recognition_model.slot_attn.num_slots
+    # def compute_filtering_feedback(self, preds, priors, posteriors, obs, args):
+    #     t, b, c, h, w = obs.shape
+    #     k = self.transition_model.recognition_model.slot_attn.num_slots
 
-        preds = itf.DSAPred(
-            pbd=torch.empty(t, b, c, h, w).to(self.args.device),
-            pad=torch.empty(t-1, b, c, h, w).to(self.args.device),
-            cbd=torch.empty(t, b, k, c, h, w).to(self.args.device),
-            cad=torch.empty(t-1, b, k, c, h, w).to(self.args.device))
+    #     kl = torch.empty(t, b, k).to(self.args.device)
+    #     for step in range(len(priors)):
+    #         # kl[step] = self.kl(posteriors[step].dist, priors[step].dist)
+    #         kl[step] = lvm.averaged_kl(posteriors[step].dist, priors[step].dist)
 
-        for step in range(len(priors)):
-            preds.cbd[step], preds.pbd[step] = self.decode(posteriors[step])
-            if step < t - 1:
-                preds.cad[step], preds.pad[step] = self.decode(priors[step+1])
+    #     initial_kl = kl[0].mean()
+    #     dynamic_kl = kl[1:].mean()
 
-        # maybe we should actually be computing the losses here too. 
-        return preds
+    #     loss_bd = F.mse_loss(preds.pbd, obs)
+    #     loss_ad = F.mse_loss(preds.pad, obs[1:])
+    #     dkl_coeff = self.dkl_scheduler.get_value()
 
-    def decode(self, rssm_state):
-        return self.observation_model.decode(lvm.get_obs_input(rssm_state, self.args.grndrate))
-
-    def compute_filtering_feedback(self, preds, priors, posteriors, obs, args):
-        t, b, c, h, w = obs.shape
-        k = self.transition_model.recognition_model.slot_attn.num_slots
-
-        kl = torch.empty(t, b, k).to(self.args.device)
-        for step in range(len(priors)):
-            # kl[step] = self.kl(posteriors[step].dist, priors[step].dist)
-            kl[step] = lvm.averaged_kl(posteriors[step].dist, priors[step].dist)
-
-        initial_kl = kl[0].mean()
-        dynamic_kl = kl[1:].mean()
-
-        loss_bd = F.mse_loss(preds.pbd, obs)
-        loss_ad = F.mse_loss(preds.pad, obs[1:])
-        dkl_coeff = self.dkl_scheduler.get_value()
-
-        observation_loss = loss_bd + loss_ad
-        kl_loss = args.kl_coeff*initial_kl + dkl_coeff*dynamic_kl**args.dkl_pwr
+    #     observation_loss = loss_bd + loss_ad
+    #     kl_loss = args.kl_coeff*initial_kl + dkl_coeff*dynamic_kl**args.dkl_pwr
 
 
-        # loss = loss_bd + loss_ad + args.kl_coeff*initial_kl + dkl_coeff*dynamic_kl**args.dkl_pwr # note that there are now twice as many recon loss terms as kl, so maybe kl_coeff needs to be double what it usually is in static case?
+    #     # loss = loss_bd + loss_ad + args.kl_coeff*initial_kl + dkl_coeff*dynamic_kl**args.dkl_pwr # note that there are now twice as many recon loss terms as kl, so maybe kl_coeff needs to be double what it usually is in static case?
 
-        if self.args.observation_consistency:
-            loss_consistency = F.mse_loss(preds.cad, preds.cbd[1:])
-            observation_loss += loss_consistency
-
-
-        loss = observation_loss + kl_loss
+    #     if self.args.observation_consistency:
+    #         loss_consistency = F.mse_loss(preds.cad, preds.cbd[1:])
+    #         observation_loss += loss_consistency
 
 
-        loss_trace = itf.LossTrace(
-            loss=loss,
-            kl=kl,
-            initial_kl=initial_kl, 
-            dynamic_kl=dynamic_kl, 
-            loss_bd=loss_bd, 
-            loss_ad=loss_ad,
-            loss_consistency=loss_consistency)
-        # return loss, loss_trace, dkl_coeff
-        return observation_loss, kl_loss, loss_trace, dkl_coeff
+    #     loss = observation_loss + kl_loss
+
+
+    #     loss_trace = itf.LossTrace(
+    #         loss=loss,
+    #         kl=kl,
+    #         initial_kl=initial_kl, 
+    #         dynamic_kl=dynamic_kl, 
+    #         loss_bd=loss_bd, 
+    #         loss_ad=loss_ad,
+    #         loss_consistency=loss_consistency)
+    #     # return loss, loss_trace, dkl_coeff
+    #     return observation_loss, kl_loss, loss_trace, dkl_coeff
 
 
 
@@ -365,9 +342,16 @@ class SlotsModelWrapper(lvm.RSSMLVM):
             # loss, loss_trace, dkl_coeff = self.compute_filtering_feedback(preds, prior, posterior, observations, self.args)
 
 
-            observation_loss, kl_loss, loss_trace, dkl_coeff = self.compute_filtering_feedback(preds, prior, posterior, observations, self.args)
+            # observation_loss, kl_loss, loss_trace, dkl_coeff = self.compute_filtering_feedback(preds, prior, posterior, observations, self.args)
 
-            log_string = 'Batch: {}\n\tLoss:\t{}\n\tLoss Before Dynamics:\t{}\n\tLoss After Dynamics:\t{}\n\tKL Initial:\t{}\n\tKL Dynamic:\t{}\n\tPrevious DKL:\t{}\n\tCurrent DKL:\t{}'.format(self.i, loss_trace.loss.item(), loss_trace.loss_bd.item(), loss_trace.loss_ad.item(), loss_trace.initial_kl.item(), loss_trace.dynamic_kl.item(), dkl_coeff, self.dkl_scheduler.get_value())
+            dkl_coeff = self.dkl_scheduler.get_value()
+            loss, loss_trace = self.compute_filtering_feedback(preds, prior, posterior, observations, dkl_coeff, self.args)
+
+            # observation_loss = loss_trace.obs_loss
+            # kl_loss = loss_trace.kl_loss
+            # loss_trace.loss = loss
+
+            log_string = 'Batch: {}\n\tLoss:\t{}\n\tLoss Before Dynamics:\t{}\n\tLoss After Dynamics:\t{}\n\tKL Initial:\t{}\n\tKL Dynamic:\t{}\n\tPrevious DKL:\t{}\n\tCurrent DKL:\t{}'.format(self.i, loss.item(), loss_trace.loss_bd.item(), loss_trace.loss_ad.item(), loss_trace.initial_kl.item(), loss_trace.dynamic_kl.item(), dkl_coeff, self.dkl_scheduler.get_value())
             if self.args.observation_consistency:
                 log_string += '\n\tObservation Consistency:\t{}'.format(loss_trace.loss_consistency.item())
             # print(log_string)
@@ -413,7 +397,8 @@ class SlotsModelWrapper(lvm.RSSMLVM):
 
 
 
-        return observation_loss, reward_loss, kl_loss
+        # return observation_loss, reward_loss, kl_loss
+        return loss_trace.obs_loss, reward_loss, loss_trace.kl_loss
 
     def compute_overshooting_feedback(self, overshooting_vars, ovsht_beliefs, ovsht_prior_states, ovsht_prior, ovsht_posterior, free_nats, reward_loss, kl_loss):
         seq_mask = torch.cat(overshooting_vars.masks, dim=1)
